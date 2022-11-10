@@ -11,18 +11,9 @@ contributions:
     - id: napari-bootstrapper.write_single_image
       python_name: napari_bootstrapper._writer:write_single_image
       title: Save image data with Bootstrapper
-    - id: napari-bootstrapper.make_sample_data
-      python_name: napari_bootstrapper._sample_data:make_sample_data
-      title: Load sample data from Bootstrapper
-    - id: napari-bootstrapper.make_qwidget
-      python_name: napari_bootstrapper._widget:ExampleQWidget
-      title: Make example QWidget
-    - id: napari-bootstrapper.make_magic_widget
-      python_name: napari_bootstrapper._widget:example_magic_widget
-      title: Make example magic widget
-    - id: napari-bootstrapper.make_func_widget
-      python_name: napari_bootstrapper._widget:example_function_widget
-      title: Make example function widget
+    - id: napari-bootstrapper.make_relabel_cc
+      python_name: napari_bootstrapper._widget:relabel_cc
+      title: Make relabel_cc
   readers:
     - command: napari-bootstrapper.get_reader
       accepts_directories: false
@@ -34,15 +25,6 @@ contributions:
     - command: napari-bootstrapper.write_single_image
       layer_types: ['image']
       filename_extensions: ['.npy']
-  sample_data:
-    - command: napari-bootstrapper.make_sample_data
-      display_name: Bootstrapper
-      key: unique_id.1
   widgets:
-    - command: napari-bootstrapper.make_qwidget
-      display_name: Example QWidget
-    - command: napari-bootstrapper.make_magic_widget
-      display_name: Example Magic Widget
-    - command: napari-bootstrapper.make_func_widget
-      autogenerate: true
-      display_name: Example Function Widget
+    - command: napari-bootstrapper.make_relabel_cc
+      display_name: Relabel Connected Components
