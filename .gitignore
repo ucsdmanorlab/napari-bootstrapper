@@ -82,3 +82,15 @@ venv/
 
 # written by setuptools_scm
 **/_version.py
+
+# gunpowder stuff
+log
+snapshots
+model_checkpoint*
+*.zarr
+
+# sample data
+sample_data
+
+# training data
+training_data
