@@ -84,8 +84,9 @@ venv/
 **/_version.py
 
 # gunpowder stuff
-log
+logs
 snapshots
+checkpoints
 model_checkpoint*
 *.zarr
 
