@@ -18,12 +18,12 @@ from funlib.persistence import open_ds, prepare_ds
 from funlib.geometry import Roi, Coordinate
 
 # functions for new two net approach
-from gp.train_net_1 import lsd_outpainting_pipeline
-from gp.train_net_2 import fake_lsds_pipeline
-from gp.predict_net_1 import lsd_outpaint_predict
-from gp.predict_net_2 import fake_lsds_predict
+from .gp.train_net_1 import lsd_outpainting_pipeline
+from .gp.train_net_2 import fake_lsds_pipeline
+from .gp.predict_net_1 import lsd_outpaint_predict
+from .gp.predict_net_2 import fake_lsds_predict
 
-from segment import watershed_from_affinities, get_segmentation
+from .segment import watershed_from_affinities, get_segmentation
 
 
 def natural_sort(l):

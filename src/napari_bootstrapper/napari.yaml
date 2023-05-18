@@ -2,29 +2,9 @@ name: napari-bootstrapper
 display_name: Bootstrapper
 contributions:
   commands:
-    - id: napari-bootstrapper.get_reader
-      python_name: napari_bootstrapper._reader:napari_get_reader
-      title: Open data with Bootstrapper
-    - id: napari-bootstrapper.write_multiple
-      python_name: napari_bootstrapper._writer:write_multiple
-      title: Save multi-layer data with Bootstrapper
-    - id: napari-bootstrapper.write_single_image
-      python_name: napari_bootstrapper._writer:write_single_image
-      title: Save image data with Bootstrapper
-    - id: napari-bootstrapper.make_relabel_cc
-      python_name: napari_bootstrapper._widget:relabel_cc
-      title: Make relabel_cc
-  readers:
-    - command: napari-bootstrapper.get_reader
-      accepts_directories: false
-      filename_patterns: ['*.npy']
-  writers:
-    - command: napari-bootstrapper.write_multiple
-      layer_types: ['image*','labels*']
-      filename_extensions: []
-    - command: napari-bootstrapper.write_single_image
-      layer_types: ['image']
-      filename_extensions: ['.npy']
+    - id: napari-bootstrapper.make_Bootstrapper
+      python_name: napari_bootstrapper._widget:Bootstrapper
+      title: Make Bootstrapper
   widgets:
-    - command: napari-bootstrapper.make_relabel_cc
-      display_name: Relabel Connected Components
+    - command: napari-bootstrapper.make_Bootstrapper
+      display_name: Napari Bootstrapper
