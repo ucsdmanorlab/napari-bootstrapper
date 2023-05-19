@@ -53,6 +53,10 @@ def predict(
         total_input_roi = source.spec[input_lsds].roi
         total_output_roi = source.spec[input_lsds].roi.grow(-context,-context)
 
+    for i in range(len(voxel_size)):
+        assert total_output_roi.get_shape()[i]/voxel_size[i] >= output_shape[i], \
+            f"total output (write) ROI cannot be smaller than model's output shape, \noffending index: {i}\ntotal_output_roi: {total_output_roi.get_shape()}, \noutput_shape: {output_shape}, \nvoxel size: {voxel_size}" 
+ 
     prepare_ds(
             out_file,
             out_ds,
