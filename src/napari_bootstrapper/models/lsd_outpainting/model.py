@@ -24,7 +24,7 @@ class LsdModel(torch.nn.Module):
             constant_upsample=True,
         )
 
-        self.lsd_head = ConvPass(num_fmaps, output_shapes[0], [[1, 1]], activation='Sigmoid')
+        self.lsd_head = ConvPass(num_fmaps, 6, [[1, 1]], activation='Sigmoid')
 
     def forward(self, input):
 

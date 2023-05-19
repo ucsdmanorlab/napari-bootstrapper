@@ -37,7 +37,7 @@ class AffsModel(torch.nn.Module):
             constant_upsample=True,
         )
 
-        self.affs_head = ConvPass(num_fmaps, len(config['neighborhood']), [[1, 1, 1]], activation='Sigmoid')
+        self.affs_head = ConvPass(num_fmaps, 3, [[1, 1, 1]], activation='Sigmoid')
 
     def forward(self, input):
 
