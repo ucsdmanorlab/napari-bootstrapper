@@ -3,17 +3,11 @@ import torch
 import os
 import json
 
-setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
-
-with open(os.path.join(setup_dir, 'config.json'), 'r') as f:
-    config = json.load(f)
-
 
 class AffsModel(torch.nn.Module):
 
     def __init__(
-            self,
-            num_fmaps):
+            self):
 
         super().__init__()
 
