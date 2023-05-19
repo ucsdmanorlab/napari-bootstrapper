@@ -142,7 +142,8 @@ def train(
 
     with gp.build(pipeline):
         for i in range(iterations):
-            pipeline.request_batch(request)
+            batch = pipeline.request_batch(request)
+            print(f"Train affs: iteration={batch.iteration} loss={batch.loss}")
 
 
 if __name__ == "__main__":

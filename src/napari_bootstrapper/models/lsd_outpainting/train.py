@@ -179,6 +179,7 @@ def train(
     with gp.build(pipeline):
         for i in range(max_iteration):
             batch = pipeline.request_batch(request)
+            print(f"Train lsds: iteration={batch.iteration} loss={batch.loss}")
 
 
 if __name__ == "__main__":

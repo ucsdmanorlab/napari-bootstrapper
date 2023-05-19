@@ -12,7 +12,7 @@ import time
 import zarr
 import re
 
-from magicclass import magicclass
+from magicclass import magicclass, wraps, logging
 from napari.layers import Image, Points
 from napari.qt.threading import thread_worker#, FunctionWorker
 from napari.types import LabelsData, ImageData
@@ -76,22 +76,31 @@ class Bootstrapper:
             # create unlabelled mask
             unlabelled = (labels > 0).astype(np.uint8)
 
-            # write 3d datasets
-            for ds_name, data in [
-                ("volumes/image", image),
-                ("volumes/labels", labels),
-                ("volumes/unlabelled", unlabelled),
-            ]:
-                f[ds_name] = data
-                f[ds_name].attrs["offset"] = offset
-                f[ds_name].attrs["resolution"] = resolution
+            if len(shape) == 3:
+                # write 3d datasets
 
+                print("Writing 3d datasets")
+                for ds_name, data in [
+                    ("volumes/image", image),
+                    ("volumes/labels", labels),
+                    ("volumes/unlabelled", unlabelled),
+                ]:
+                    f[ds_name] = data
+                    f[ds_name].attrs["offset"] = offset
+                    f[ds_name].attrs["resolution"] = resolution
+
+            print("Writing 2d datasets")
             # write 2d datasets
             for ds_name, data in [
                 ("image", image),
                 ("labels", labels),
                 ("unlabelled", unlabelled),
             ]:
+        
+                if len(shape) == 2:
+                    # add z dim
+                    data = np.expand_dims(data, axis=0)
+
                 for i, section in enumerate(data):
                     section_number = int(offset[0]/resolution[0] + i)
 
@@ -100,6 +109,7 @@ class Bootstrapper:
                         f[f"{ds_name}/{section_number}"].attrs["offset"] = offset[1:]
                         f[f"{ds_name}/{section_number}"].attrs["resolution"] = resolution[1:]
 
+            print("Done!")
             return None
 
     @magicclass
@@ -132,7 +142,6 @@ class Bootstrapper:
                 save_every,
                 save_name,
             ).start()
-
 
         @thread_worker
         def _run_model_1(
