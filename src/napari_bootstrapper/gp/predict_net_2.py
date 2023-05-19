@@ -35,9 +35,9 @@ def fake_lsds_predict(
     ]
 
     unet = UNet(
-        in_channels=10,
+        in_channels=6,
         num_fmaps=num_fmaps,
-        fmap_inc_factor=5,
+        fmap_inc_factor=3,
         downsample_factors=ds_fact,
         kernel_size_down=ksd,
         kernel_size_up=ksu,
