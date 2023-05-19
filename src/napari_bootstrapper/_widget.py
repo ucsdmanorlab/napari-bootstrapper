@@ -155,7 +155,7 @@ class Bootstrapper:
             #batch_size: int = 5,
             num_workers: int = 10,
             save_every: int = 1000,
-            save_name: str = "fake_lsds",
+            save_name: str = "lsd_to_affs",
         ):
 
             self._run_model_2(
@@ -178,7 +178,7 @@ class Bootstrapper:
             zarr_container: Path = "training_data/test.zarr",
             image_dataset: str = "image",
             model_1_checkpoint: Path = "lsd_outpainting_checkpoint_5000",
-            model_2_checkpoint: Path = "fake_lsds_checkpoint_5000",
+            model_2_checkpoint: Path = "lsd_to_affs_checkpoint_5000",
             voxel_size: List[int] = [50, 8, 8],
         ) -> ImageData:
 

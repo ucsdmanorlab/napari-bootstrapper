@@ -122,7 +122,7 @@ def train(
         loss_inputs={0: pred_affs, 1: gt_affs, 2: affs_weights},
         outputs={0: pred_affs},
         save_every=save_every,
-        log_dir=os.path.join(setup_dir,'log'),
+        #log_dir=os.path.join(setup_dir,'log'),
         checkpoint_basename=checkpoint_basename
     )
 
@@ -136,7 +136,7 @@ def train(
             pred_affs: "pred_affs",
         },
         output_filename="batch_{iteration}.zarr",
-        output_dir=os.path.join(setup_dir,'snapshots'),
+        output_dir=os.path.join('snapshots/lsd_to_affs_snapshots'),
         every=1000,
     )
 
@@ -151,5 +151,5 @@ if __name__ == "__main__":
         501,
         [50,8,8],
         500,
-        "fake_lsds",
+        "lsd_to_affs",
         10)

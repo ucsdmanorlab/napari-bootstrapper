@@ -88,7 +88,7 @@ def train(
 
     source = tuple(
         gp.ZarrSource(
-            data_dir,
+            zarr_container,
             {
                 raw: os.path.join(raw_ds,str(i)),
                 labels: os.path.join(labels_ds,str(i)),
@@ -189,7 +189,7 @@ if __name__ == "__main__":
         "labels",
         "unlabelled",
         501,
-        [50,8,8],
+        [8,8],
         0.1,
         500,
         5,
