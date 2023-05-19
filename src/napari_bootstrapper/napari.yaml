@@ -8,4 +8,3 @@ contributions:
   widgets:
     - command: napari-bootstrapper.make_Bootstrapper
       display_name: Bootstrapper
-      autogenerate: true

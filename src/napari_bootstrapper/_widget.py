@@ -13,9 +13,8 @@ import zarr
 import re
 
 from magicclass import magicclass
-from magicclass.ext.napari import to_napari
 from napari.layers import Image, Points
-from napari.qt.threading import thread_worker, FunctionWorker
+from napari.qt.threading import thread_worker#, FunctionWorker
 from napari.types import LabelsData, ImageData
 from pathlib import Path
 from skimage.measure import label
@@ -46,8 +45,6 @@ def _pad_data(in_data, target_shape, offset, resolution):
     return padded
 
 
-
-@to_napari
 @magicclass
 class Bootstrapper:
     @magicclass
@@ -356,4 +353,5 @@ class Bootstrapper:
 
             return seg
 
-napari.run(max_loop_level=3)
+if __name__ == "__main__":
+    napari.run()
