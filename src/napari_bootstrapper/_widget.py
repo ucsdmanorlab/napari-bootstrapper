@@ -109,53 +109,36 @@ class Bootstrapper:
 
             return None
 
-
     @magicclass
-    class TrainModel:
-        def Train_Model(
+    class TrainModel1:
+        def Train_Model_1(
             self,
             zarr_container: Path = "training_data/test.zarr",
             image_dataset: str = "image",
             labels_dataset: str = "labels",
             unlabelled_dataset: str = "unlabelled",
-            model_1_iters: int = 3000,
-            model_2_iters: int = 1000,
-            model_1_vs: List[int] = [8, 8],
-            model_2_vs: List[int] = [40, 8, 8],
+            iters: int = 3000,
+            vs: List[int] = [8, 8],
             min_masked: float = 0.1,
             batch_size: int = 5,
             #pre_cache,
-            model_1_save_every: int = 1000,
-            model_2_save_every: int = 1000,
-            model_1_save_name: str = "training_data/lsd_outpainting",
-            model_2_save_name: str = "training_data/fake_lsds",
+            save_every: int = 1000,
+            save_name: str = "lsd_outpainting",
         ):
-
-            # todo: handle parameters cleanly - maybe change pipelines to
-            # classes and have a config class? quick and dirty for now, here are
-            # some example parameters:
-
-            os.makedirs("checkpoints", exist_ok=True)
 
             self._run_model_1(
                 zarr_container,
                 image_dataset,
                 labels_dataset,
                 unlabelled_dataset,
-                model_1_iters,
-                model_1_vs,
+                iters,
+                vs,
                 min_masked,
                 batch_size,
-                model_1_save_every,
-                model_1_save_name,
+                save_every,
+                save_name,
             ).start()
 
-            self._run_model_2(
-                model_2_iters,
-                model_2_vs,
-                model_2_save_every,
-                model_2_save_name,
-            ).start()
 
         @thread_worker
         def _run_model_1(
@@ -166,6 +149,25 @@ class Bootstrapper:
                 zarr_file, raw_ds, labels_ds, unlabelled_ds, iters, vs, min_masked, batch_size, save_every, save_name
             )
 
+    @magicclass
+    class TrainModel2:
+        def Train_Model_2(
+            self,
+            iters: int = 1000,
+            vs: List[int] = [50, 8, 8],
+            #batch_size: int = 5,
+            #pre_cache,
+            save_every: int = 1000,
+            save_name: str = "fake_lsds",
+        ):
+
+            self._run_model_2(
+                model_2_iters,
+                model_2_vs,
+                model_2_save_every,
+                model_2_save_name,
+            ).start()
+        
         @thread_worker
         def _run_model_2(self, iters, vs, save_every, save_name):
 
@@ -216,11 +218,10 @@ class Bootstrapper:
             # network 1: raw -> lsds
             full_lsds = []
 
-            for z in available_sections:
-                raw_dataset = f"self.image_dataset/{z}"
+            for f,ds in image_sources:
 
                 lsds, lsds_roi = lsd_outpaint_predict(
-                    self.zarr_container, raw_dataset, self.model_1_checkpoint, self.voxel_size
+                    f, ds, self.model_1_checkpoint, self.voxel_size
                 )
 
                 full_lsds.append(lsds)
