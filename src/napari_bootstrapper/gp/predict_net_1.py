@@ -93,12 +93,6 @@ def lsd_outpaint_predict(
 
     scan = gp.Scan(scan_request)
 
-    write = gp.ZarrWrite(
-            dataset_names={
-                pred_lsds: lsds_out_ds,
-            },
-            store=out_file)
-
     pipeline = (
             source +
             gp.Normalize(raw) +
@@ -109,7 +103,6 @@ def lsd_outpaint_predict(
             predict +
             gp.Squeeze([pred_lsds]) +
             gp.IntensityScaleShift(pred_lsds, 255, 0) +
-            write+
             scan)
 
     predict_request = gp.BatchRequest()
