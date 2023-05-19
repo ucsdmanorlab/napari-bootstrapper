@@ -1,4 +1,11 @@
+from .models import lsd_outpainting, lsd_to_affs
+from .segment import watershed_from_affinities, get_segmentation
+
+from funlib.persistence import open_ds, prepare_ds
+from funlib.geometry import Roi, Coordinate
+
 import napari
+
 import numpy as np
 import os
 import time
@@ -13,17 +20,6 @@ from napari.types import LabelsData, ImageData
 from pathlib import Path
 from skimage.measure import label
 from typing import List
-
-from funlib.persistence import open_ds, prepare_ds
-from funlib.geometry import Roi, Coordinate
-
-# functions for new two net approach
-from .gp.train_net_1 import lsd_outpainting_pipeline
-from .gp.train_net_2 import fake_lsds_pipeline
-from .gp.predict_net_1 import lsd_outpaint_predict
-from .gp.predict_net_2 import fake_lsds_predict
-
-from .segment import watershed_from_affinities, get_segmentation
 
 
 def natural_sort(l):
@@ -121,7 +117,7 @@ class Bootstrapper:
             vs: List[int] = [8, 8],
             min_masked: float = 0.1,
             batch_size: int = 5,
-            #pre_cache,
+            num_workers: int = 10,
             save_every: int = 1000,
             save_name: str = "lsd_outpainting",
         ):
@@ -135,6 +131,7 @@ class Bootstrapper:
                 vs,
                 min_masked,
                 batch_size,
+                num_workers,
                 save_every,
                 save_name,
             ).start()
@@ -142,11 +139,11 @@ class Bootstrapper:
 
         @thread_worker
         def _run_model_1(
-            self, zarr_file, raw_ds, labels_ds, unlabelled_ds, iters, vs, min_masked, batch_size, save_every, save_name
+            self, zarr_file, raw_ds, labels_ds, unlabelled_ds, iters, vs, min_masked, batch_size, num_workers, save_every, save_name
         ):
 
-            lsd_outpainting_pipeline(
-                zarr_file, raw_ds, labels_ds, unlabelled_ds, iters, vs, min_masked, batch_size, save_every, save_name
+            lsd_outpainting.train(
+                zarr_file, raw_ds, labels_ds, unlabelled_ds, iters, vs, min_masked, batch_size, num_workers, save_every, save_name
             )
 
     @magicclass
@@ -156,22 +153,23 @@ class Bootstrapper:
             iters: int = 1000,
             vs: List[int] = [50, 8, 8],
             #batch_size: int = 5,
-            #pre_cache,
+            num_workers: int = 10,
             save_every: int = 1000,
             save_name: str = "fake_lsds",
         ):
 
             self._run_model_2(
-                model_2_iters,
-                model_2_vs,
-                model_2_save_every,
-                model_2_save_name,
+                iters,
+                vs,
+                save_every,
+                save_name,
+                num_workers
             ).start()
         
         @thread_worker
-        def _run_model_2(self, iters, vs, save_every, save_name):
+        def _run_model_2(self, iters, vs, save_every, save_name, num_workers):
 
-            fake_lsds_pipeline(iters, vs, save_every, save_name)
+            lsd_to_affs.train(iters, vs, save_every, save_name, num_workers)
 
     @magicclass
     class RunInference:
@@ -220,7 +218,7 @@ class Bootstrapper:
 
             for f,ds in image_sources:
 
-                lsds, lsds_roi = lsd_outpaint_predict(
+                lsds, lsds_roi = lsd_outpainting.predict(
                     f, ds, self.model_1_checkpoint, self.voxel_size
                 )
 
@@ -240,7 +238,7 @@ class Bootstrapper:
             out_lsds = prepare_ds(
                     self.zarr_container,
                     "lsds",
-                    Roi(lsds_offset,lsds_roi.shape),
+                    lsds_roi,
                     voxel_size,
                     dtype=np.uint8,
                     delete=True,
@@ -253,7 +251,7 @@ class Bootstrapper:
             out_file["lsds"].attrs["raw_shape"] = image_shape
 
             # network 2: lsds -> affs
-            affs, affs_offset = fake_lsds_predict(
+            affs, affs_offset = lsd_to_affs.predict(
                 self.zarr_container,
                 "lsds",
                 self.zarr_container,

@@ -1,4 +1,9 @@
+from .model import AffsModel, WeightedMSELoss
+
+from autoseg.utils import ZerosSource, CreateLabels, SmoothArray, CustomLSDs
+from lsd.train.gp import AddLocalShapeDescriptor
 import gunpowder as gp
+
 import os
 import json
 import logging
@@ -7,78 +12,20 @@ import numpy as np
 import random
 import torch
 import zarr
-from lsd.train.gp import AddLocalShapeDescriptor
-
-from funlib.learn.torch.models import UNet, ConvPass
-from autoseg.utils import ZerosSource, CreateLabels, SmoothArray, CustomLSDs
 
 logging.basicConfig(level=logging.INFO)
 
 torch.backends.cudnn.benchmark = True
 
 
-class WeightedMSELoss(torch.nn.MSELoss):
-    def __init__(self) -> None:
-        super(WeightedMSELoss, self).__init__()
-
-    def forward(self, prediction, target, weights):
-
-        scaled = weights * (prediction - target) ** 2
-
-        if len(torch.nonzero(scaled)) != 0:
-            mask = torch.masked_select(scaled, torch.gt(weights, 0))
-            loss = torch.mean(mask)
-
-        else:
-            loss = torch.mean(scaled)
-
-        return loss
-
-
-def fake_lsds_pipeline(
+def train(
         iterations,
         voxel_size,
         save_every,
-        checkpoint_basename):
+        checkpoint_basename,
+        num_workers):
 
-    num_fmaps = 12
-
-    ds_fact = [(2, 2, 2), (1, 2, 2)]
-
-    ksd = [
-        [(2, 3, 3), (2, 3, 3)],
-        [(1, 3, 3), (1, 3, 3)],
-        [(1, 3, 3), (1, 3, 3)],
-    ]
-
-    ksu = [
-        [(1, 3, 3), (1, 3, 3)],
-        [(2, 3, 3), (2, 3, 3)],
-    ]
-
-    unet = UNet(
-        in_channels=6,
-        num_fmaps=num_fmaps,
-        fmap_inc_factor=3,
-        downsample_factors=ds_fact,
-        kernel_size_down=ksd,
-        kernel_size_up=ksu,
-        padding="valid",
-        constant_upsample=True,
-    )
-
-    model = torch.nn.Sequential(
-        unet,
-        ConvPass(
-            in_channels=num_fmaps,
-            out_channels=3,
-            kernel_sizes=[(1, 1, 1)],
-            activation="Sigmoid",
-        ),
-    )
-
-    neighborhood = [[0, 0, -1], [0, -1, 0], [-1, 0, 0]]
-
+    model = AffsModel()
     loss = WeightedMSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
 
@@ -90,6 +37,7 @@ def fake_lsds_pipeline(
 
     voxel_size = gp.Coordinate(voxel_size)
     anisotropy = int((voxel_size[0] / voxel_size[1]) - 1) # 0 is isotropic
+    sigma = int(10*voxel_size[-1])
 
     input_shape = gp.Coordinate((10, 96, 96))
     output_shape = gp.Coordinate((4, 56, 56))
@@ -133,7 +81,7 @@ def fake_lsds_pipeline(
 
     # do this on non eroded labels - that is what predicted lsds will look like
     pipeline += CustomLSDs(
-        zeros, gt_lsds, sigma=int(10*voxel_size[-1]), downsample=2
+        zeros, gt_lsds, sigma=sigma, downsample=2
     )
 
     # add random noise
@@ -142,13 +90,17 @@ def fake_lsds_pipeline(
     pipeline += gp.IntensityAugment(gt_lsds, 0.9, 1.1, -0.1, 0.1)
 
     # smooth the batch by different sigmas to simulate noisy predictions
-    pipeline += SmoothArray(gt_lsds,(0.0,1.0))
+    pipeline += SmoothArray(gt_lsds, (0.0, 0.1))
 
     # now we erode - we want the gt affs to have a pixel boundary
     pipeline += gp.GrowBoundary(zeros, steps=1, only_xy=bool(anisotropy))
 
     pipeline += gp.AddAffinities(
-        affinity_neighborhood=neighborhood,
+        affinity_neighborhood=[
+            [-1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1]
+        ],
         labels=zeros,
         affinities=gt_affs,
         dtype=np.float32,
@@ -158,7 +110,7 @@ def fake_lsds_pipeline(
 
     pipeline += gp.Stack(1)
 
-    pipeline += gp.PreCache(cache_size=40, num_workers=10)
+    pipeline += gp.PreCache(num_workers=num_workers)
 
     pipeline += gp.torch.Train(
         model,
@@ -167,7 +119,8 @@ def fake_lsds_pipeline(
         inputs={"input": gt_lsds},
         loss_inputs={0: pred_affs, 1: gt_affs, 2: affs_weights},
         outputs={0: pred_affs},
-        save_every=1000,
+        save_every=save_every,
+        log_dir=os.path.join(setup_dir,'log'),
         checkpoint_basename=checkpoint_basename
     )
 
@@ -181,10 +134,20 @@ def fake_lsds_pipeline(
             pred_affs: "pred_affs",
         },
         output_filename="batch_{iteration}.zarr",
-        output_dir="snapshots/fake_lsds_snapshots",
-        every=save_every,
+        output_dir=os.path.join(setup_dir,'snapshots'),
+        every=1000,
     )
 
     with gp.build(pipeline):
         for i in range(iterations):
             pipeline.request_batch(request)
+
+
+if __name__ == "__main__":
+
+    train(
+        501,
+        [50,8,8],
+        500,
+        "fake_lsds",
+        10)

@@ -1,38 +1,41 @@
+from .model import LsdModel, WeightedMSELoss
+
+from lsd.train.gp import AddLocalShapeDescriptor
+
 import os
+import sys
 import json
 import math
 import logging
 import numpy as np
 import gunpowder as gp
 import torch
-from lsd.train.gp import AddLocalShapeDescriptor
-from funlib.learn.torch.models import UNet, ConvPass
+from scipy.ndimage import gaussian_filter
+
 
 logging.basicConfig(level=logging.INFO)
 
 neighborhood = [[-1,0],[0,-1]]
 
 
+def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
 
-class WeightedMSELoss(torch.nn.MSELoss):
-    def __init__(self) -> None:
-        super(WeightedMSELoss, self).__init__()
+    method_padding = gp.Coordinate((sigma * 2,) * 2)
 
-    def forward(self, prediction, target, weights):
+    diag = np.sqrt(output_size[0] ** 2 + output_size[1] ** 2)
 
-        scaled = weights * (prediction - target) ** 2
+    max_padding = gp.Roi(
+        (
+            gp.Coordinate([i / 2 for i in [diag, diag]])
+            + method_padding
+        ),
+        (0,) * 2,
+    ).snap_to_grid(voxel_size, mode=mode)
 
-        if len(torch.nonzero(scaled)) != 0:
-            mask = torch.masked_select(scaled, torch.gt(weights, 0))
-            loss = torch.mean(mask)
-
-        else:
-            loss = torch.mean(scaled)
-
-        return loss
+    return max_padding.get_begin()
 
 
-def lsd_outpainting_pipeline(
+def train(
         zarr_container,
         raw_ds,
         labels_ds,
@@ -42,53 +45,28 @@ def lsd_outpainting_pipeline(
         min_masked,
         save_every,
         batch_size,
+        num_workers,
         checkpoint_basename):
 
-    available_sections = [x for x in os.listdir(os.path.join(zarr_container,labels_ds)) if '.' not in x]
-    print(f"Available sections to train on: {available_sections}")
-
-    num_fmaps = 12
-
-    ds_fact = [(2, 2), (2, 2), (2, 2)]
-    num_levels = len(ds_fact) + 1
-    ksd = [[(3, 3), (3, 3)]] * num_levels
-    ksu = [[(3, 3), (3, 3)]] * (num_levels - 1)
-
-    unet = UNet(
-        in_channels=1,
-        num_fmaps=num_fmaps,
-        fmap_inc_factor=5,
-        downsample_factors=ds_fact,
-        kernel_size_down=ksd,
-        kernel_size_up=ksu,
-        padding="valid",
-        constant_upsample=True,
-    )
-
-    model = torch.nn.Sequential(
-        unet,
-        ConvPass(
-            in_channels=num_fmaps,
-            out_channels=6,
-            kernel_sizes=[(1, 1)],
-            activation="Sigmoid",
-        ),
-    )
+    output_shapes = [6]
+    
+    model = LsdModel(output_shapes)
 
     loss = WeightedMSELoss()
-
+    
     optimizer = torch.optim.Adam(
             model.parameters(),
             lr=0.5e-4)
 
-    input_shape = gp.Coordinate((196,196))
-    output_shape = gp.Coordinate((104,104))
+
+    output_shape = gp.Coordinate(tuple(output_shape))
+    input_shape = gp.Coordinate(tuple(input_shape))
 
     voxel_size = gp.Coordinate(voxel_size)
-    output_size = output_shape * voxel_size
     input_size = input_shape * voxel_size
-
-    context = (input_size - output_size) // 2
+    output_size = output_shape * voxel_size
+    sigma = int(10*voxel_size[-1])
+    labels_padding = calc_max_padding(output_size, voxel_size, sigma)
 
     raw = gp.ArrayKey('RAW')
     labels = gp.ArrayKey('LABELS')
@@ -107,9 +85,12 @@ def lsd_outpainting_pipeline(
     request.add(pred_lsds, output_size)
     request.add(lsds_weights, output_size)
 
+    available_sections = [x for x in os.listdir(os.path.join(zarr_container,labels_ds)) if '.' not in x]
+    print(f"Available sections to train on: {available_sections}")
+
     source = tuple(
         gp.ZarrSource(
-            zarr_container,
+            data_dir,
             {
                 raw: os.path.join(raw_ds,str(i)),
                 labels: os.path.join(labels_ds,str(i)),
@@ -122,8 +103,8 @@ def lsd_outpainting_pipeline(
             }) +
         gp.Normalize(raw) +
         gp.Pad(raw, None) +
-        gp.Pad(labels, context) +
-        gp.Pad(unlabelled, context) +
+        gp.Pad(labels, labels_padding) +
+        gp.Pad(unlabelled, labels_padding) +
         gp.RandomLocation(mask=unlabelled,min_masked=min_masked)
         for i in available_sections
     )
@@ -132,7 +113,7 @@ def lsd_outpainting_pipeline(
     pipeline += gp.RandomProvider()
 
     pipeline += gp.ElasticAugment(
-        control_point_spacing=(50,) * 2,
+        control_point_spacing=(voxel_size[0] * 5,) * 2,
         jitter_sigma=(2,2),
         scale_interval=(0.75,1.25),
         rotation_interval=[0,math.pi/2.0],
@@ -154,15 +135,15 @@ def lsd_outpainting_pipeline(
             gt_lsds,
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
-            sigma=int(10*voxel_size[-1]),
-            downsample=2)
+            sigma=sigma,
+            downsample=1)
 
     pipeline += gp.IntensityScaleShift(raw, 2,-1)
 
     pipeline += gp.Unsqueeze([raw])
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=10, cache_size=40)
+    pipeline += gp.PreCache(num_workers=num_workers)
 
     pipeline += gp.torch.Train(
         model,
@@ -199,4 +180,20 @@ def lsd_outpainting_pipeline(
 
     with gp.build(pipeline):
         for i in range(max_iteration):
-            pipeline.request_batch(request)
+            batch = pipeline.request_batch(request)
+
+
+if __name__ == "__main__":
+
+    train(
+        sys.argv[1],
+        "image",
+        "labels",
+        "unlabelled",
+        501,
+        [50,8,8],
+        0.1,
+        500,
+        5,
+        10,
+        "lsd_outpainting")

@@ -1,4 +1,9 @@
+from .model import LsdModel
+
+from funlib.persistence import prepare_ds
+
 import json
+import sys
 import re
 import shutil
 import zarr
@@ -10,11 +15,9 @@ import os
 import sys
 import torch
 import daisy
-from funlib.persistence import prepare_ds
-from funlib.learn.torch.models import UNet, ConvPass
 
 
-def lsd_outpaint_predict(
+def predict(
         raw_file,
         raw_dataset,
         checkpoint,
@@ -24,36 +27,10 @@ def lsd_outpaint_predict(
 
     raw = gp.ArrayKey('RAW')
     pred_lsds = gp.ArrayKey('PRED_LSDS')
- 
-    num_fmaps = 12
 
-    ds_fact = [(2, 2), (2, 2), (2, 2)]
-    num_levels = len(ds_fact) + 1
-    ksd = [[(3, 3), (3, 3)]] * num_levels
-    ksu = [[(3, 3), (3, 3)]] * (num_levels - 1)
-
-    unet = UNet(
-        in_channels=1,
-        num_fmaps=num_fmaps,
-        fmap_inc_factor=5,
-        downsample_factors=ds_fact,
-        kernel_size_down=ksd,
-        kernel_size_up=ksu,
-        padding="valid",
-        constant_upsample=True,
-    )
-
-    model = torch.nn.Sequential(
-        unet,
-        ConvPass(
-            in_channels=num_fmaps,
-            out_channels=6,
-            kernel_sizes=[(1, 1)],
-            activation="Sigmoid",
-        ),
-    ) 
+    model = LsdModel([6])
     model.eval()
-    
+
     input_shape = gp.Coordinate((300, 300))
     output_shape = gp.Coordinate((208, 208))
     voxel_size = gp.Coordinate(voxel_size[1:])
@@ -61,7 +38,7 @@ def lsd_outpaint_predict(
     input_size = input_shape * voxel_size
     output_size = output_shape * voxel_size
 
-    context = (input_size - output_size) // 2
+    context = (input_size - output_size) / 2
 
     scan_request = gp.BatchRequest()
 
@@ -114,3 +91,53 @@ def lsd_outpaint_predict(
         batch = pipeline.request_batch(predict_request)
 
     return batch[pred_lsds].data, total_output_roi
+
+
+def natural_sort(l): 
+    convert = lambda text: int(text) if text.isdigit() else text.lower() 
+    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)] 
+    return sorted(l, key=alphanum_key)
+
+
+if __name__ == "__main__":
+
+    raw_file = sys.argv[1]
+    raw_ds = "image"
+    voxel_size = [50, 8, 8] 
+    checkpoint = sys.argv[2]
+    
+    sections = [x for x in os.listdir(os.path.join(raw_file,raw_ds)) if '.' not in x]
+    sections = natural_sort(sections)
+
+    full_lsds = []
+
+    for section in sections: 
+        raw_dataset = f'{raw_ds}/{section}'
+
+        lsds, lsds_roi = predict(
+            raw_file,
+            raw_ds
+            checkpoint,
+            voxel_size)
+
+        full_lsds.append(lsds)
+
+    full_lsds = (
+        np.array(full_lsds).transpose((1, 0, 2, 3)).astype(np.float32)
+    )
+
+    # offset should be 3d for padding
+    lsds_offset = [int(available_sections[0])*voxel_size[0]] + list(lsds_roi.offset)
+    lsds_roi = Roi(Coordinate(lsds_offset),Coordinate(full_lsds.shape[1:])*voxel_size)
+
+    # write lsds to zarr
+    out_lsds = prepare_ds(
+            raw_file,
+            "lsds",
+            lsds_roi,
+            voxel_size,
+            dtype=np.uint8,
+            delete=True,
+            num_channels=6)
+
+    out_lsds[lsds_roi] = full_lsds

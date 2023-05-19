@@ -1,5 +1,9 @@
-import json
+from .model import AffsModel
+from funlib.persistence import prepare_ds
+from funlib.geometry import Roi, Coordinate
 import gunpowder as gp
+
+import json
 import math
 import numpy as np
 import os
@@ -7,54 +11,12 @@ import sys
 import torch
 import logging
 import zarr
-import daisy
-from funlib.persistence import prepare_ds
-from funlib.learn.torch.models import UNet, ConvPass
 
-neighborhood = [
-        [-1,0,0],
-        [0,-1,0],
-        [0,0,-1]]
 
-def fake_lsds_predict(
+def predict(
         input_lsds_file, input_lsds_dataset, out_file, out_ds, checkpoint, voxel_size, grow):
 
-    num_fmaps = 12
-
-    ds_fact = [(2, 2, 2), (1, 2, 2)]
-
-    ksd = [
-        [(2, 3, 3), (2, 3, 3)],
-        [(1, 3, 3), (1, 3, 3)],
-        [(1, 3, 3), (1, 3, 3)],
-    ]
-
-    ksu = [
-        [(1, 3, 3), (1, 3, 3)],
-        [(2, 3, 3), (2, 3, 3)],
-    ]
-
-    unet = UNet(
-        in_channels=6,
-        num_fmaps=num_fmaps,
-        fmap_inc_factor=3,
-        downsample_factors=ds_fact,
-        kernel_size_down=ksd,
-        kernel_size_up=ksu,
-        padding="valid",
-        constant_upsample=True,
-    )
-
-    model = torch.nn.Sequential(
-        unet,
-        ConvPass(
-            in_channels=num_fmaps,
-            out_channels=3,
-            kernel_sizes=[(1, 1, 1)],
-            activation="Sigmoid",
-        ),
-    )
-
+    model = AffsModel() 
     model.eval()
 
     input_lsds = gp.ArrayKey('INPUT_LSDS')
@@ -94,7 +56,7 @@ def fake_lsds_predict(
     prepare_ds(
             out_file,
             out_ds,
-            daisy.Roi(
+            Roi(
                 total_output_roi.get_offset(),
                 total_output_roi.get_shape()
             ),
@@ -103,7 +65,7 @@ def fake_lsds_predict(
             write_size=output_size,
             compressor={"id":"blosc","clevel":3},
             delete=True,
-            num_channels=len(neighborhood))
+            num_channels=3)
 
     predict = gp.torch.Predict(
             model,
@@ -143,3 +105,17 @@ def fake_lsds_predict(
         batch = pipeline.request_batch(predict_request)
 
     return batch[pred_affs].data, total_output_roi
+
+
+if __name__ == "__main__":
+
+    input_lsds_file = sys.argv[1]
+    input_lsds_dataset = "lsds"
+    out_file = sys.argv[1]
+    out_ds = "affs"
+    checkpoint = sys.argv[2]
+    voxel_size = [50, 8, 8]
+    grow = True
+
+    predict(
+        input_lsds_file, input_lsds_dataset, out_file, out_ds, checkpoint, voxel_size, grow):
