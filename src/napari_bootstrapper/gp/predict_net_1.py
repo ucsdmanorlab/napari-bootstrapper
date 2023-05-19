@@ -61,7 +61,7 @@ def lsd_outpaint_predict(
     input_size = input_shape * voxel_size
     output_size = output_shape * voxel_size
 
-    context = (input_size - output_size) / 2
+    context = (input_size - output_size) // 2
 
     scan_request = gp.BatchRequest()
 

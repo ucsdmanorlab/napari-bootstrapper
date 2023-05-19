@@ -71,7 +71,7 @@ def fake_lsds_predict(
     input_size = input_shape * voxel_size
     output_size = output_shape * voxel_size
 
-    context = (input_size - output_size) / 2
+    context = (input_size - output_size) // 2
 
     scan_request = gp.BatchRequest()
 
@@ -126,6 +126,7 @@ def fake_lsds_predict(
     pipeline = (
             source +
             gp.Normalize(input_lsds) +
+            gp.Pad(input_lsds, None) +
             gp.Unsqueeze([input_lsds]) +
             predict +
             gp.Squeeze([pred_affs]) +

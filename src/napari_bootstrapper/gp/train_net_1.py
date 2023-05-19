@@ -88,6 +88,8 @@ def lsd_outpainting_pipeline(
     output_size = output_shape * voxel_size
     input_size = input_shape * voxel_size
 
+    context = (input_size - output_size) // 2
+
     raw = gp.ArrayKey('RAW')
     labels = gp.ArrayKey('LABELS')
     unlabelled = gp.ArrayKey('UNLABELLED')
@@ -119,6 +121,9 @@ def lsd_outpainting_pipeline(
                 unlabelled: gp.ArraySpec(interpolatable=False),
             }) +
         gp.Normalize(raw) +
+        gp.Pad(raw, None) +
+        gp.Pad(labels, context) +
+        gp.Pad(unlabelled, context) +
         gp.RandomLocation(mask=unlabelled,min_masked=min_masked)
         for i in available_sections
     )
