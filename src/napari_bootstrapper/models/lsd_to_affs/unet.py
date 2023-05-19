@@ -370,7 +370,7 @@ class UNet3d(nn.Module):
                 How to pad convolutions. Either 'same' or 'valid' (default).
         '''
 
-        super(UNet, self).__init__()
+        super(UNet3d, self).__init__()
 
         self.num_levels = len(downsample_factors) + 1
         self.num_heads = num_heads
