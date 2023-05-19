@@ -7,4 +7,5 @@ contributions:
       title: Make Bootstrapper
   widgets:
     - command: napari-bootstrapper.make_Bootstrapper
-      display_name: Napari Bootstrapper
+      display_name: Bootstrapper
+      autogenerate: true

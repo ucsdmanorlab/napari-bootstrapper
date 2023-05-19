@@ -139,12 +139,21 @@ class Bootstrapper:
 
         @thread_worker
         def _run_model_1(
-            self, zarr_file, raw_ds, labels_ds, unlabelled_ds, iters, vs, min_masked, batch_size, num_workers, save_every, save_name
+            self, zarr_container, image_dataset, labels_dataset, unlabelled_dataset, iters, vs, min_masked, batch_size, num_workers, save_every, save_name
         ):
 
             lsd_outpainting.train(
-                zarr_file, raw_ds, labels_ds, unlabelled_ds, iters, vs, min_masked, batch_size, num_workers, save_every, save_name
-            )
+                zarr_container,
+                image_dataset,
+                labels_dataset,
+                unlabelled_dataset,
+                iters,
+                vs,
+                min_masked,
+                save_every,
+                batch_size,
+                num_workers,
+                save_name)
 
     @magicclass
     class TrainModel2:
@@ -347,4 +356,4 @@ class Bootstrapper:
 
             return seg
 
-napari.run()
+napari.run(max_loop_level=3)
