@@ -177,8 +177,8 @@ class Bootstrapper:
             self,
             zarr_container: Path = "training_data/test.zarr",
             image_dataset: str = "image",
-            model_1_checkpoint: Path = "training_data/lsd_outpainting_checkpoint_2000"
-            model_2_checkpoint: Path = "training_data/affs_net_checkpoint_5000",
+            model_1_checkpoint: Path = "lsd_outpainting_checkpoint_5000",
+            model_2_checkpoint: Path = "fake_lsds_checkpoint_5000",
             voxel_size: List[int] = [50, 8, 8],
         ) -> ImageData:
 
