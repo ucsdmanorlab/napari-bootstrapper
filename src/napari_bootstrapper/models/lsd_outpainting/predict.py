@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
         lsds, lsds_roi = predict(
             raw_file,
-            raw_ds
+            raw_ds,
             checkpoint,
             voxel_size)
 
