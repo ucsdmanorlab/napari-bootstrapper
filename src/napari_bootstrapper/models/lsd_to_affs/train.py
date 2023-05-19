@@ -26,6 +26,8 @@ def train(
         num_workers):
 
     model = AffsModel()
+    model.train()
+
     loss = WeightedMSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
 

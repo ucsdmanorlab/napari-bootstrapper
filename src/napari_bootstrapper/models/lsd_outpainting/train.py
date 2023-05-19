@@ -48,9 +48,8 @@ def train(
         num_workers,
         checkpoint_basename):
 
-    output_shapes = [6]
-    
-    model = LsdModel(output_shapes)
+    model = LsdModel()
+    model.train()
 
     loss = WeightedMSELoss()
     
@@ -58,9 +57,8 @@ def train(
             model.parameters(),
             lr=0.5e-4)
 
-
-    output_shape = gp.Coordinate(tuple(output_shape))
-    input_shape = gp.Coordinate(tuple(input_shape))
+    input_shape = gp.Coordinate((196, 196))
+    output_shape = gp.Coordinate((104, 104))
 
     voxel_size = gp.Coordinate(voxel_size)
     input_size = input_shape * voxel_size

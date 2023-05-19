@@ -4,17 +4,10 @@ import torch
 
 class LsdModel(torch.nn.Module):
 
-    def __init__(
-            self,
-            output_shapes):
-
+    def __init__(self):
         super().__init__()
 
-        num_fmaps = sum(output_shapes)
-
-        if num_fmaps < 5:
-            num_fmaps = 5
-
+        num_fmaps = 6
         ds_fact = [(2, 2), (2, 2), (2, 2)]
         num_levels = len(ds_fact) + 1
         ksd = [[(3, 3), (3, 3)]] * num_levels

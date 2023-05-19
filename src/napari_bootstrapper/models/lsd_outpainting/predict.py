@@ -28,7 +28,7 @@ def predict(
     raw = gp.ArrayKey('RAW')
     pred_lsds = gp.ArrayKey('PRED_LSDS')
 
-    model = LsdModel([6])
+    model = LsdModel()
     model.eval()
 
     input_shape = gp.Coordinate((300, 300))
