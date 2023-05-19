@@ -118,4 +118,4 @@ if __name__ == "__main__":
     grow = True
 
     predict(
-        input_lsds_file, input_lsds_dataset, out_file, out_ds, checkpoint, voxel_size, grow):
+        input_lsds_file, input_lsds_dataset, out_file, out_ds, checkpoint, voxel_size, grow)
