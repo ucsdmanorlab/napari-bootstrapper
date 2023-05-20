@@ -1,13 +1,12 @@
 from .unet import UNet2d, ConvPass
 import torch
 
-
 class LsdModel(torch.nn.Module):
 
     def __init__(self):
         super().__init__()
 
-        num_fmaps = 6
+        num_fmaps = 12
         ds_fact = [(2, 2), (2, 2), (2, 2)]
         num_levels = len(ds_fact) + 1
         ksd = [[(3, 3), (3, 3)]] * num_levels

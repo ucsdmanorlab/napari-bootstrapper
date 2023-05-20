@@ -21,7 +21,8 @@ def predict(
         raw_file,
         raw_dataset,
         checkpoint,
-        voxel_size):
+        voxel_size,
+        grow):
 
     section = int(raw_dataset.split('/')[-1])
 
@@ -31,8 +32,16 @@ def predict(
     model = LsdModel()
     model.eval()
 
-    input_shape = gp.Coordinate((300, 300))
-    output_shape = gp.Coordinate((208, 208))
+    input_shape = (196, 196)
+    output_shape = (104, 104)
+    
+    input_shape = gp.Coordinate(input_shape)
+    output_shape = gp.Coordinate(output_shape)
+    
+    if grow:
+        input_shape += gp.Coordinate((96, 96))
+        output_shape += gp.Coordinate((96, 96))
+
     voxel_size = gp.Coordinate(voxel_size[1:])
 
     input_size = input_shape * voxel_size

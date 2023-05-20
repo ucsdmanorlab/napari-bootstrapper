@@ -22,14 +22,17 @@ def predict(
     input_lsds = gp.ArrayKey('INPUT_LSDS')
     pred_affs = gp.ArrayKey('PRED_AFFS')
 
-    voxel_size = gp.Coordinate(voxel_size)
-    input_shape = gp.Coordinate((10, 96, 96))
-    output_shape = gp.Coordinate((4, 56, 56))
+    input_shape = (10, 148, 148)
+    output_shape = (6, 108, 108)
+    
+    input_shape = gp.Coordinate(input_shape)
+    output_shape = gp.Coordinate(output_shape)
 
     if grow:
-        input_shape += gp.Coordinate((16, 96, 96))
-        output_shape += gp.Coordinate((16, 96, 96))
+        input_shape += gp.Coordinate((8, 96, 96))
+        output_shape += gp.Coordinate((8, 96, 96))
 
+    voxel_size = gp.Coordinate(voxel_size) 
     input_size = input_shape * voxel_size
     output_size = output_shape * voxel_size
 
@@ -107,6 +110,8 @@ def predict(
 
     with gp.build(pipeline):
         batch = pipeline.request_batch(predict_request)
+    
+    print("Affinities inference complete!")
 
     return batch[pred_affs].data, total_output_roi
 

@@ -15,8 +15,6 @@ from scipy.ndimage import gaussian_filter
 
 logging.basicConfig(level=logging.INFO)
 
-neighborhood = [[-1,0],[0,-1]]
-
 
 def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
 
@@ -57,8 +55,11 @@ def train(
             model.parameters(),
             lr=0.5e-4)
 
-    input_shape = gp.Coordinate((196, 196))
-    output_shape = gp.Coordinate((104, 104))
+    input_shape = (196, 196)
+    output_shape = (104, 104)
+
+    input_shape = gp.Coordinate(input_shape)
+    output_shape = gp.Coordinate(output_shape)
 
     voxel_size = gp.Coordinate(voxel_size)
     input_size = input_shape * voxel_size
@@ -179,7 +180,9 @@ def train(
     with gp.build(pipeline):
         for i in range(max_iteration):
             batch = pipeline.request_batch(request)
-            print(f"Train lsds: iteration={batch.iteration} loss={batch.loss}")
+            print(f"Training lsds: iteration={batch.iteration} loss={batch.loss}")
+
+        print("Training lsds complete!")
 
 
 if __name__ == "__main__":

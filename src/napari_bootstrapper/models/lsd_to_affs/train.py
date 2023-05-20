@@ -41,9 +41,12 @@ def train(
     anisotropy = int((voxel_size[0] / voxel_size[1]) - 1) # 0 is isotropic
     sigma = int(10*voxel_size[-1])
 
-    input_shape = gp.Coordinate((10, 96, 96))
-    output_shape = gp.Coordinate((4, 56, 56))
+    input_shape = (10, 148, 148)
+    output_shape = (6, 108, 108)
 
+    input_shape = gp.Coordinate(input_shape)
+    output_shape = gp.Coordinate(output_shape)
+    
     input_size = input_shape * voxel_size
     output_size = output_shape * voxel_size
 
@@ -145,6 +148,7 @@ def train(
             batch = pipeline.request_batch(request)
             print(f"Train affs: iteration={batch.iteration} loss={batch.loss}")
 
+        print("Training affinities complete!")
 
 if __name__ == "__main__":
 

@@ -12,8 +12,8 @@ import time
 import zarr
 import re
 
-from magicclass import magicclass, wraps, logging
-from napari.layers import Image, Points
+from magicclass import magicclass, wraps
+from napari.layers import Layer, Image, Labels, Points
 from napari.qt.threading import thread_worker#, FunctionWorker
 from napari.types import LabelsData, ImageData
 from pathlib import Path
@@ -62,16 +62,30 @@ class Bootstrapper:
         def Relabel(self, labels: LabelsData) -> LabelsData:
             relabelled = label(labels, connectivity=1)
             return relabelled
-    
+   
+    @magicclass
+    class TranslateLayer:
+        def Translate_Layer(
+                self, 
+                layer: Layer,
+                translation: List[int] = [0] * 3) -> None:
+
+            if len(layer.data.shape) == 2:
+                layer.data = np.expand_dims(layer.data, axis=0)
+
+            layer.translate += translation
+
     @magicclass
     class SaveData:
         def Save_Data(
             self,
             image: ImageData,
             labels: LabelsData,
-            save_container: Path = "training_data/test.zarr",
+            image_name: str = "image",
+            labels_name: str = "labels",
+            save_container: Path = "data.zarr",
             offset: List[int] = [0] * 3,
-            resolution: List[int] = [1] * 3,
+            resolution: List[int] = [4] * 3,
         ) -> None:
 
             f = zarr.open(save_container,"a")
@@ -80,31 +94,35 @@ class Bootstrapper:
             image = np.asarray(image,dtype=np.uint8)
             labels = np.asarray(labels,dtype=np.uint64)
 
-            assert image.shape == labels.shape, "unequal shapes not implemented"
+            # pad or crop labels array so shapes match
             shape = tuple(image.shape)
+            #labels = self._pad_or_crop_array(shape,labels)
+
+            assert image.shape == labels.shape, "unequal shapes not implemented"
 
             # create unlabelled mask
             unlabelled = (labels > 0).astype(np.uint8)
+            unlabelled_name = "unlabelled"
 
             if len(shape) == 3:
                 # write 3d datasets
 
-                print("Writing 3d datasets")
+                print("Writing 3d datasets...")
                 for ds_name, data in [
-                    ("volumes/image", image),
-                    ("volumes/labels", labels),
-                    ("volumes/unlabelled", unlabelled),
+                    (f"volumes/{image_name}", image),
+                    (f"volumes/{labels_name}", labels),
+                    (f"volumes/{unlabelled_name}", unlabelled),
                 ]:
                     f[ds_name] = data
                     f[ds_name].attrs["offset"] = offset
                     f[ds_name].attrs["resolution"] = resolution
 
-            print("Writing 2d datasets")
+            print("Writing 2d datasets...")
             # write 2d datasets
             for ds_name, data in [
-                ("image", image),
-                ("labels", labels),
-                ("unlabelled", unlabelled),
+                (image_name, image),
+                (labels_name, labels),
+                (unlabelled_name, unlabelled),
             ]:
         
                 if len(shape) == 2:
@@ -121,21 +139,43 @@ class Bootstrapper:
 
             print("Done!")
             return None
+            
+        def _pad_or_crop_array(self, shape, B):
+                
+                A_shape = shape
+                B_shape = B.shape
+                
+                if A_shape == B_shape:
+                    return B  # No padding or cropping required
+                
+                # Calculate the required padding or cropping
+                pad_width = [(0, max(0, A_shape[i] - B_shape[i])) for i in range(len(A_shape))]
+                crop_width = [(0, max(0, B_shape[i] - A_shape[i])) for i in range(len(A_shape))]
+                
+                # Pad or crop the array accordingly
+                if np.sum(crop_width) > 0:
+                    slices = tuple(slice(crop_width[i][0], B_shape[i] - crop_width[i][1]) for i in range(len(A_shape)))
+                    B = B[slices]
+                elif np.sum(pad_width) > 0:
+                    B = np.pad(B, pad_width, mode='constant')
+                
+                return B
+
 
     @magicclass
     class TrainModel1:
         def Train_Model_1(
             self,
-            zarr_container: Path = "training_data/test.zarr",
+            zarr_container: Path = "data.zarr",
             image_dataset: str = "image",
             labels_dataset: str = "labels",
             unlabelled_dataset: str = "unlabelled",
-            iters: int = 3000,
-            vs: List[int] = [8, 8],
+            iters: int = 5001,
+            vs: List[int] = [4, 4],
             min_masked: float = 0.1,
             batch_size: int = 5,
             num_workers: int = 10,
-            save_every: int = 1000,
+            save_every: int = 5000,
             save_name: str = "lsd_outpainting",
         ):
 
@@ -175,8 +215,8 @@ class Bootstrapper:
     class TrainModel2:
         def Train_Model_2(
             self,
-            iters: int = 1000,
-            vs: List[int] = [50, 8, 8],
+            iters: int = 5001,
+            vs: List[int] = [40, 4, 4],
             #batch_size: int = 5,
             num_workers: int = 10,
             save_every: int = 1000,
@@ -200,16 +240,20 @@ class Bootstrapper:
     class RunInference:
         def Run_Inference(
             self,
-            zarr_container: Path = "training_data/test.zarr",
+            zarr_container: Path = "data.zarr",
             image_dataset: str = "image",
+            lsds_dataset: str = "lsds",
+            affs_dataset: str = "affs",
             model_1_checkpoint: Path = "lsd_outpainting_checkpoint_5000",
             model_2_checkpoint: Path = "lsd_to_affs_checkpoint_5000",
-            voxel_size: List[int] = [50, 8, 8],
+            voxel_size: List[int] = [40, 4, 4],
             grow: bool = False,
         ) -> ImageData:
 
             self.zarr_container = str(zarr_container)
             self.image_dataset = image_dataset
+            self.lsds_dataset = lsds_dataset
+            self.affs_dataset = affs_dataset
             self.model_1_checkpoint = str(model_1_checkpoint)
             self.model_2_checkpoint = str(model_2_checkpoint)
             self.voxel_size = voxel_size
@@ -222,8 +266,8 @@ class Bootstrapper:
         def _on_return(self, value):
             # callback function to add returned data to the viewer
             viewer = self.parent_viewer
-            viewer.add_image(value[0], name="lsds")
-            viewer.add_image(value[1], name="affs")
+            viewer.add_image(value[0], name=self.lsds_dataset)
+            viewer.add_image(value[1], name=self.affs_dataset)
             # ADD TRANSLATE. napari viewer can do offset
 
         @thread_worker
@@ -246,7 +290,7 @@ class Bootstrapper:
             for f,ds in image_sources:
 
                 lsds, lsds_roi = lsd_outpainting.predict(
-                    f, ds, self.model_1_checkpoint, self.voxel_size
+                    f, ds, self.model_1_checkpoint, self.voxel_size, self.grow
                 )
 
                 full_lsds.append(lsds)
@@ -264,7 +308,7 @@ class Bootstrapper:
             # write lsds to zarr
             out_lsds = prepare_ds(
                     self.zarr_container,
-                    "lsds",
+                    self.lsds_dataset,
                     lsds_roi,
                     voxel_size,
                     dtype=np.uint8,
@@ -272,17 +316,14 @@ class Bootstrapper:
                     num_channels=6)
 
             out_lsds[lsds_roi] = full_lsds
-
-            # hacky way for knowing how much to pad segmentation by later, todo:
-            # handle this correctly
-            out_file["lsds"].attrs["raw_shape"] = image_shape
+            print("Lsds inference complete!")
 
             # network 2: lsds -> affs
             affs, affs_roi = lsd_to_affs.predict(
                 self.zarr_container,
-                "lsds",
+                self.lsds_datset,
                 self.zarr_container,
-                "affs",
+                self.affs_dataset,
                 self.model_2_checkpoint,
                 self.voxel_size,
                 grow=self.grow
@@ -308,14 +349,19 @@ class Bootstrapper:
             full_lsds = full_lsds[0:3].transpose((1, 2, 3, 0)).astype(np.uint8)
             affs = affs.transpose((1, 2, 3, 0)).astype(np.uint8)
 
+            # hacky way for knowing how much to pad segmentation by later, todo:
+            # handle this correctly
+            out_file[self.affs_dataset].attrs["raw_shape"] = image_shape
+
             return [full_lsds, affs]
 
     @magicclass
     class Watershed:
         def Watershed(
                 self, 
-                zarr_container: Path = "training_data/test.zarr",
-                affs_dataset: str = "affs") -> LabelsData:
+                zarr_container: Path = "data.zarr",
+                affs_dataset: str = "affs",
+                fragments_dataset: str = "frags") -> LabelsData:
 
             # hacky way of getting the base image shape, im sure there is a
             # better way to access this info via the viewer (without having to
@@ -323,22 +369,24 @@ class Bootstrapper:
             zarr_container = str(zarr_container)
 
             f = zarr.open(zarr_container, "a")
+            print("Loading affinities...")
             affinities = f[affs_dataset][:]
             affinities = (affinities / np.max(affinities)).astype(np.float32)
 
-            raw_shape = f["lsds"].attrs["raw_shape"]
-            resolution = f["lsds"].attrs["resolution"]
+            raw_shape = f[affs_dataset].attrs["raw_shape"]
+            resolution = f[affs_dataset].attrs["resolution"]
             offset = f[affs_dataset].attrs["offset"]
             roi = Roi(Coordinate(offset),Coordinate(affinities.shape[1:])*Coordinate(resolution))
 
             out_frags = prepare_ds(
                     zarr_container,
-                    "fragments",
+                    fragments_dataset,
                     roi,
                     resolution,
                     dtype=np.uint64,
                     delete=True)
             
+            print("Making fragments...")
             fragments = watershed_from_affinities(affinities)[0]
 
             out_frags[roi] = fragments
@@ -347,32 +395,38 @@ class Bootstrapper:
                 fragments, raw_shape, offset, resolution
             )
 
+            print("Done!")
             return fragments
 
     @magicclass
     class Segment:
         def Segment(
                 self, 
-                zarr_container: Path = "training_data/test.zarr",
+                zarr_container: Path = "data.zarr",
+                affs_dataset: str = "affs",
+                fragments_dataset: str = "frags",
                 threshold: float = 0.5) -> LabelsData:
 
-
+            f = zarr.open(zarr_container, "r")
+            
             # hacky way of getting the base image shape, im sure there is a
             # better way to access this info via the viewer (without having to
             # pass as an argument...
-            raw_shape = zarr.open(zarr_container)["lsds"].attrs["raw_shape"]
-            resolution = zarr.open(zarr_container)["lsds"].attrs["resolution"]
-            offset = zarr.open(zarr_container)["affs"].attrs["offset"]
+            raw_shape = f[affs_dataset].attrs["raw_shape"]
+            resolution = f[affs_dataset].attrs["resolution"]
+            offset = f[affs_dataset].attrs["offset"]
 
-            f = zarr.open(zarr_container, "r")
-            affs = f["affs"][:]
-            frags = f["fragments"][:]
+            print("Loading affinities and fragments...")
+            affs = f[affs_dataset][:]
+            frags = f[fragments_dataset][:]
 
             affs = (affs / np.max(affs)).astype(np.float32)
-            seg = get_segmentation(affs, frags, threshold=threshold)
 
+            print("Performing hierarchical agglomeration...")
+            seg = get_segmentation(affs, frags, threshold=threshold)
             seg = _pad_data(seg, raw_shape, offset, resolution)
 
+            print("Done!")
             return seg
 
 if __name__ == "__main__":

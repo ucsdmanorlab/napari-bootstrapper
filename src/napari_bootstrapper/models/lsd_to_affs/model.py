@@ -3,7 +3,6 @@ import torch
 import os
 import json
 
-
 class AffsModel(torch.nn.Module):
 
     def __init__(
@@ -13,7 +12,7 @@ class AffsModel(torch.nn.Module):
 
         num_fmaps = 12
 
-        ds_fact = [(2, 2, 2), (1, 2, 2)]
+        ds_fact = [(1, 2, 2), (1, 2, 2)]
 
         ksd = [
             [(2, 3, 3), (2, 3, 3)],
@@ -29,7 +28,7 @@ class AffsModel(torch.nn.Module):
         self.unet = UNet3d(
             in_channels=6,
             num_fmaps=num_fmaps,
-            fmap_inc_factor=3,
+            fmap_inc_factor=5,
             downsample_factors=ds_fact,
             kernel_size_down=ksd,
             kernel_size_up=ksu,
