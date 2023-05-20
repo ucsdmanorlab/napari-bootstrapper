@@ -195,6 +195,7 @@ class Bootstrapper:
             model_1_checkpoint: Path = "lsd_outpainting_checkpoint_5000",
             model_2_checkpoint: Path = "lsd_to_affs_checkpoint_5000",
             voxel_size: List[int] = [50, 8, 8],
+            grow: bool = False,
         ) -> ImageData:
 
             self.zarr_container = str(zarr_container)
@@ -202,6 +203,7 @@ class Bootstrapper:
             self.model_1_checkpoint = str(model_1_checkpoint)
             self.model_2_checkpoint = str(model_2_checkpoint)
             self.voxel_size = voxel_size
+            self.grow = grow
 
             worker = self._run_prediction()
             worker.returned.connect(self._on_return)
@@ -273,7 +275,7 @@ class Bootstrapper:
                 "affs",
                 self.model_2_checkpoint,
                 self.voxel_size,
-                grow=True
+                grow=self.grow
             )
 
             # napari doesn't handle offsets?? pad with zeros...
@@ -281,14 +283,14 @@ class Bootstrapper:
                 in_data=full_lsds,
                 target_shape=image_shape,
                 offset=lsds_offset,
-                resolution=resolution,
+                resolution=self.voxel_size,
             )
 
             affs = _pad_data(
                 in_data=affs,
                 target_shape=image_shape,
                 offset=affs_offset,
-                resolution=resolution,
+                resolution=self.voxel_size,
             )
 
             # c,z,y,x
