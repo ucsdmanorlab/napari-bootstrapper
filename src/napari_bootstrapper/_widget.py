@@ -33,14 +33,24 @@ def _pad_data(in_data, target_shape, offset, resolution):
     # we need to pad with zeros instead
     offset = [int(i / j) for i, j in zip(offset, resolution)]
 
-    padded = np.zeros(shape=(in_data.shape[0],) + tuple(target_shape))
+    if len(in_data.shape) == 4:
+        padded = np.zeros(shape=(in_data.shape[0],) + tuple(target_shape)).astype(in_data.dtype)
+    else:
+        padded = np.zeros(tuple(target_shape)).astype(in_data.dtype)
 
-    padded[
-        :,
-        offset[0] : offset[0] + in_data.shape[1],
-        offset[1] : offset[1] + in_data.shape[2],
-        offset[2] : offset[2] + in_data.shape[3],
-    ] = in_data
+    if len(in_data.shape) == 4:
+        padded[
+            :,
+            offset[0] : offset[0] + in_data.shape[1],
+            offset[1] : offset[1] + in_data.shape[2],
+            offset[2] : offset[2] + in_data.shape[3],
+        ] = in_data
+    else:
+        padded[
+            offset[0] : offset[0] + in_data.shape[0],
+            offset[1] : offset[1] + in_data.shape[1],
+            offset[2] : offset[2] + in_data.shape[2],
+        ] = in_data
 
     return padded
 
@@ -268,7 +278,7 @@ class Bootstrapper:
             out_file["lsds"].attrs["raw_shape"] = image_shape
 
             # network 2: lsds -> affs
-            affs, affs_offset = lsd_to_affs.predict(
+            affs, affs_roi = lsd_to_affs.predict(
                 self.zarr_container,
                 "lsds",
                 self.zarr_container,
@@ -289,7 +299,7 @@ class Bootstrapper:
             affs = _pad_data(
                 in_data=affs,
                 target_shape=image_shape,
-                offset=affs_offset,
+                offset=affs_roi.get_begin(),
                 resolution=self.voxel_size,
             )
 
@@ -310,6 +320,7 @@ class Bootstrapper:
             # hacky way of getting the base image shape, im sure there is a
             # better way to access this info via the viewer (without having to
             # pass as an argument...
+            zarr_container = str(zarr_container)
 
             f = zarr.open(zarr_container, "a")
             affinities = f[affs_dataset][:]
@@ -318,7 +329,7 @@ class Bootstrapper:
             raw_shape = f["lsds"].attrs["raw_shape"]
             resolution = f["lsds"].attrs["resolution"]
             offset = f[affs_dataset].attrs["offset"]
-            roi = Roi(Coordinate(offset),Coordinate(affinities.shape[1:])*voxel_size)
+            roi = Roi(Coordinate(offset),Coordinate(affinities.shape[1:])*Coordinate(resolution))
 
             out_frags = prepare_ds(
                     zarr_container,
@@ -349,13 +360,13 @@ class Bootstrapper:
             # hacky way of getting the base image shape, im sure there is a
             # better way to access this info via the viewer (without having to
             # pass as an argument...
-            raw_shape = zarr.open(f_name)["lsds"].attrs["raw_shape"]
-            resolution = zarr.open(f_name)["lsds"].attrs["resolution"]
-            offset = zarr.open(f_name)["affs"].attrs["offset"]
+            raw_shape = zarr.open(zarr_container)["lsds"].attrs["raw_shape"]
+            resolution = zarr.open(zarr_container)["lsds"].attrs["resolution"]
+            offset = zarr.open(zarr_container)["affs"].attrs["offset"]
 
             f = zarr.open(zarr_container, "r")
             affs = f["affs"][:]
-            frags = f["frags"][:]
+            frags = f["fragments"][:]
 
             affs = (affs / np.max(affs)).astype(np.float32)
             seg = get_segmentation(affs, frags, threshold=threshold)

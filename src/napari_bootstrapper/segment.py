@@ -42,7 +42,7 @@ def get_segmentation(
             scoring_function=waterz_merge_function[merge_function])
 
 
-    segmentation = next(segmentations)
+    segmentation = next(generator)
     return segmentation
 
 
