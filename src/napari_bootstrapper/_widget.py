@@ -63,17 +63,62 @@ class Bootstrapper:
             relabelled = label(labels, connectivity=1)
             return relabelled
    
-    @magicclass
-    class TranslateLayer:
-        def Translate_Layer(
-                self, 
-                layer: Layer,
-                translation: List[int] = [0] * 3) -> None:
+#    @magicclass
+#    class TranslateLayer:
+#        def Translate_Layer(
+#                self, 
+#                image: ImageData,
+#                labels: LabelsData,
+#                translation: List[int] = [0] * 3) -> None:
+#
+#            # temporary handle type for gp
+#            image = np.asarray(image,dtype=np.uint8)
+#            labels = np.asarray(labels,dtype=np.uint64)
+#
+#            print(f"Image shape: {image.shape}")
+#            print(f"Labels shape: {labels.shape}")
+#
+#            # pad or crop labels array so shapes match
+#            shape = tuple(image.shape)
+#            
+#            if len(labels.shape) == 2:
+#                labels = np.expand_dims(labels, axis=0)
+#
+#            translated_labels = np.zeros(shape, dtype=np.uint64)
+#            
+#            slices = np.s_[
+#                    translation[0]:translation[0]+labels.shape[0],
+#                    translation[1]:translation[1]+labels.shape[1],
+#                    translation[2]:translation[2]+labels.shape[2]]
+#
+#            translated_labels[slices] = labels
+#
+#            #labels = _pad_or_crop_array(shape,labels)
+#            assert image.shape == translated_labels.shape, "unequal shapes not implemented"
+#
+#            return translated_labels
 
-            if len(layer.data.shape) == 2:
-                layer.data = np.expand_dims(layer.data, axis=0)
+#        def _pad_or_crop_array(self, shape, B):
+#                
+#                A_shape = shape
+#                B_shape = B.shape
+#                
+#                if A_shape == B_shape:
+#                    return B  # No padding or cropping required
+#                
+#                # Calculate the required padding or cropping
+#                pad_width = [(0, max(0, A_shape[i] - B_shape[i])) for i in range(len(A_shape))]
+#                crop_width = [(0, max(0, B_shape[i] - A_shape[i])) for i in range(len(A_shape))]
+#                
+#                # Pad or crop the array accordingly
+#                if np.sum(crop_width) > 0:
+#                    slices = tuple(slice(crop_width[i][0], B_shape[i] - crop_width[i][1]) for i in range(len(A_shape)))
+#                    B = B[slices]
+#                elif np.sum(pad_width) > 0:
+#                    B = np.pad(B, pad_width, mode='constant')
+#                
+#                return B
 
-            layer.translate += translation
 
     @magicclass
     class SaveData:
@@ -96,8 +141,6 @@ class Bootstrapper:
 
             # pad or crop labels array so shapes match
             shape = tuple(image.shape)
-            #labels = self._pad_or_crop_array(shape,labels)
-
             assert image.shape == labels.shape, "unequal shapes not implemented"
 
             # create unlabelled mask
@@ -140,27 +183,6 @@ class Bootstrapper:
             print("Done!")
             return None
             
-        def _pad_or_crop_array(self, shape, B):
-                
-                A_shape = shape
-                B_shape = B.shape
-                
-                if A_shape == B_shape:
-                    return B  # No padding or cropping required
-                
-                # Calculate the required padding or cropping
-                pad_width = [(0, max(0, A_shape[i] - B_shape[i])) for i in range(len(A_shape))]
-                crop_width = [(0, max(0, B_shape[i] - A_shape[i])) for i in range(len(A_shape))]
-                
-                # Pad or crop the array accordingly
-                if np.sum(crop_width) > 0:
-                    slices = tuple(slice(crop_width[i][0], B_shape[i] - crop_width[i][1]) for i in range(len(A_shape)))
-                    B = B[slices]
-                elif np.sum(pad_width) > 0:
-                    B = np.pad(B, pad_width, mode='constant')
-                
-                return B
-
 
     @magicclass
     class TrainModel1:
@@ -321,7 +343,7 @@ class Bootstrapper:
             # network 2: lsds -> affs
             affs, affs_roi = lsd_to_affs.predict(
                 self.zarr_container,
-                self.lsds_datset,
+                self.lsds_dataset,
                 self.zarr_container,
                 self.affs_dataset,
                 self.model_2_checkpoint,
