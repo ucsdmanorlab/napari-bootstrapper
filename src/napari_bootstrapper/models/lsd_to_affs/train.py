@@ -39,7 +39,9 @@ def train(
 
     voxel_size = gp.Coordinate(voxel_size)
     anisotropy = int((voxel_size[0] / voxel_size[1]) - 1) # 0 is isotropic
-    sigma = int(10*voxel_size[-1])
+    if anisotropy > 4: 
+        anisotropy = 4
+    sigma = 80
 
     input_shape = (10, 148, 148)
     output_shape = (6, 108, 108)

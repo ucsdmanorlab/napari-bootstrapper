@@ -64,7 +64,7 @@ def train(
     voxel_size = gp.Coordinate(voxel_size)
     input_size = input_shape * voxel_size
     output_size = output_shape * voxel_size
-    sigma = int(10*voxel_size[-1])
+    sigma = 80
     labels_padding = calc_max_padding(output_size, voxel_size, sigma)
 
     raw = gp.ArrayKey('RAW')

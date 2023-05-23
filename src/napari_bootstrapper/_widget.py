@@ -18,7 +18,7 @@ from napari.qt.threading import thread_worker#, FunctionWorker
 from napari.types import LabelsData, ImageData
 from pathlib import Path
 from skimage.measure import label
-from typing import List
+from typing import List, Literal
 
 
 def natural_sort(l):
@@ -130,7 +130,7 @@ class Bootstrapper:
             labels_name: str = "labels",
             save_container: Path = "data.zarr",
             offset: List[int] = [0] * 3,
-            resolution: List[int] = [4] * 3,
+            resolution: List[int] = [40, 8, 8],
         ) -> None:
 
             f = zarr.open(save_container,"a")
@@ -193,7 +193,7 @@ class Bootstrapper:
             labels_dataset: str = "labels",
             unlabelled_dataset: str = "unlabelled",
             iters: int = 5001,
-            vs: List[int] = [4, 4],
+            vs: List[int] = [8, 8],
             min_masked: float = 0.1,
             batch_size: int = 5,
             num_workers: int = 10,
@@ -238,7 +238,7 @@ class Bootstrapper:
         def Train_Model_2(
             self,
             iters: int = 5001,
-            vs: List[int] = [40, 4, 4],
+            vs: List[int] = [40, 8, 8],
             #batch_size: int = 5,
             num_workers: int = 10,
             save_every: int = 1000,
@@ -268,7 +268,7 @@ class Bootstrapper:
             affs_dataset: str = "affs",
             model_1_checkpoint: Path = "lsd_outpainting_checkpoint_5000",
             model_2_checkpoint: Path = "lsd_to_affs_checkpoint_5000",
-            voxel_size: List[int] = [40, 4, 4],
+            voxel_size: List[int] = [40, 8, 8],
             grow: bool = False,
         ) -> ImageData:
 
@@ -427,7 +427,8 @@ class Bootstrapper:
                 zarr_container: Path = "data.zarr",
                 affs_dataset: str = "affs",
                 fragments_dataset: str = "frags",
-                threshold: float = 0.5) -> LabelsData:
+                threshold: float = 0.5,
+                merge_function: Literal["mean", "hist_quant_50", "hist_quant_75"] = "mean") -> LabelsData:
 
             f = zarr.open(zarr_container, "r")
             
@@ -445,7 +446,7 @@ class Bootstrapper:
             affs = (affs / np.max(affs)).astype(np.float32)
 
             print("Performing hierarchical agglomeration...")
-            seg = get_segmentation(affs, frags, threshold=threshold)
+            seg = get_segmentation(affs, frags, threshold=threshold, merge_function=merge_function)
             seg = _pad_data(seg, raw_shape, offset, resolution)
 
             print("Done!")
