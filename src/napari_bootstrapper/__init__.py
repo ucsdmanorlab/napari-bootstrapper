@@ -1,13 +1,15 @@
 __version__ = "0.0.1"
 
-from ._reader import napari_get_reader
-from ._writer import write_multiple, write_single_image
-
+from .sample_data._load import cremi_sample
+from .widgets._model_2d import (
+    TrainWidget,
+    model_config_widget,
+    train_config_widget,
+)
 
 __all__ = (
-    "napari_get_reader",
-    "write_single_image",
-    "write_multiple",
-    "ExampleQWidget",
-    "example_magic_widget",
+    "cremi_sample",
+    "train_config_widget",
+    "model_config_widget",
+    "TrainWidget",
 )
