@@ -9,14 +9,34 @@ Replace code below according to your needs.
 
 from __future__ import annotations
 
-import numpy
+from pathlib import Path
+
+import numpy as np
+
+CREMI_IMAGE_SAMPLE = Path(__file__).parent / "sample_data" / "image.npy"
+CREMI_LABELS_SAMPLE = Path(__file__).parent / "sample_data" / "labels.npy"
 
 
 def make_sample_data():
-    """Generates an image"""
-    # Return list of tuples
-    # [(data1, add_image_kwargs1), (data2, add_image_kwargs2)]
-    # Check the documentation for more information about the
-    # add_image_kwargs
-    # https://napari.org/stable/api/napari.Viewer.html#napari.Viewer.add_image
-    return [(numpy.random.rand(512, 512), {})]
+    raw = np.load(CREMI_IMAGE_SAMPLE, "r")
+    painting = np.load(CREMI_LABELS_SAMPLE, "r")
+    raw = raw.astype(np.uint8)
+    painting = painting.astype(np.uint32)
+    return [
+        (
+            raw,
+            {
+                "name": "Raw",
+                "metadata": {"axes": ["z", "y", "x"]},
+            },
+            "image",
+        ),
+        (
+            painting,
+            {
+                "name": "Sparse Labels",
+                "metadata": {"axes": ["z", "y", "x"]},
+            },
+            "Labels",
+        ),
+    ]
