@@ -3,18 +3,9 @@ display_name: Bootstrapper
 # use 'hidden' to remove plugin from napari hub search results
 visibility: public
 # see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
-categories: ["Annotation", "Segmentation", "Acquisition"]
+categories: ["Annotation", "Segmentation", "Dataset"]
 contributions:
   commands:
-    - id: napari-bootstrapper.get_reader
-      python_name: napari_bootstrapper._reader:napari_get_reader
-      title: Open data with Bootstrapper
-    - id: napari-bootstrapper.write_multiple
-      python_name: napari_bootstrapper._writer:write_multiple
-      title: Save multi-layer data with Bootstrapper
-    - id: napari-bootstrapper.write_single_image
-      python_name: napari_bootstrapper._writer:write_single_image
-      title: Save image data with Bootstrapper
     - id: napari-bootstrapper.make_sample_data
       python_name: napari_bootstrapper._sample_data:make_sample_data
       title: Load sample data from Bootstrapper
@@ -30,17 +21,6 @@ contributions:
     - id: napari-bootstrapper.make_qwidget
       python_name: napari_bootstrapper:ExampleQWidget
       title: Make example QWidget
-  readers:
-    - command: napari-bootstrapper.get_reader
-      accepts_directories: false
-      filename_patterns: ['*.npy']
-  writers:
-    - command: napari-bootstrapper.write_multiple
-      layer_types: ['image*','labels*']
-      filename_extensions: []
-    - command: napari-bootstrapper.write_single_image
-      layer_types: ['image']
-      filename_extensions: ['.npy']
   sample_data:
     - command: napari-bootstrapper.make_sample_data
       display_name: Bootstrapper
