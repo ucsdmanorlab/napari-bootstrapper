@@ -8,14 +8,14 @@ contributions:
   commands:
     - id: napari-bootstrapper.make_sample_data
       python_name: napari_bootstrapper._sample_data:make_sample_data
-      title: Load sample data from Bootstrapper
-    - id: napari-bootstrapper.make_qwidget
-      python_name: napari_bootstrapper:ExampleQWidget
-      title: Make example QWidget
+      title: Load sample data
+    - id: napari-bootstrapper.Widget
+      python_name: napari_bootstrapper:Widget
+      title: Bootstrapper
   sample_data:
     - command: napari-bootstrapper.make_sample_data
-      display_name: Bootstrapper
-      key: unique_id.1
+      display_name: cremi_sample_c
+      key: cremi_sample_c
   widgets:
-    - command: napari-bootstrapper.make_qwidget
-      display_name: Example QWidget
+    - command: napari-bootstrapper.Widget
+      display_name: Bootstrapper
