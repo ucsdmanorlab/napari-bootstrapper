@@ -1,5 +1,4 @@
 import time
-from typing import TYPE_CHECKING
 
 import pyqtgraph as pg
 from napari.qt.threading import thread_worker
@@ -19,9 +18,6 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class Widget(QMainWindow):
@@ -168,13 +164,46 @@ class Widget(QMainWindow):
 
     def set_grid_3(self):
         """
-        Specifies the model configuration.
+        Specifies the 2D model configuration, plot and train/stop button.
         """
         model_2d_type = QLabel(self)
         model_2d_type.setText("2D model type")
         self.model_2d_type_selector = QComboBox(self)
         self.model_2d_type_selector.addItems(["2d_lsd", "2d_affs", "2d_mtlsd"])
 
+        # TODO: add advanced model config dropdown. net config params, aff neighborhood, sigma
+
+        self.losses_2d_widget = pg.PlotWidget()
+        self.losses_2d_widget.setBackground((37, 41, 49))
+        styles = {"color": "white", "font-size": "16px"}
+        self.losses_2d_widget.setLabel("left", "Loss 2D", **styles)
+        self.losses_2d_widget.setLabel("bottom", "Iterations", **styles)
+        self.start_2d_training_button = QPushButton("Start training 2D")
+        self.start_2d_training_button.setFixedSize(88, 30)
+        self.stop_2d_training_button = QPushButton("Stop training 2D")
+        self.stop_2d_training_button.setFixedSize(88, 30)
+        self.save_2d_weights_button = QPushButton("Save 2D model weights")
+        self.save_2d_weights_button.setFixedSize(88, 30)
+
+        self.start_2d_training_button.clicked.connect(
+            self.prepare_for_start_2d_training
+        )
+        self.stop_2d_training_button.clicked.connect(
+            self.prepare_for_stop_2d_training
+        )
+        self.save_2d_weights_button.clicked.connect(self.save_weights)
+
+        self.grid_3.addWidget(model_2d_type, 0, 0, 1, 1)
+        self.grid_3.addWidget(self.model_2d_type_selector, 0, 1, 1, 1)
+        self.grid_3.addWidget(self.losses_2d_widget, 1, 0, 4, 4)
+        self.grid_3.addWidget(self.start_2d_training_button, 4, 0, 1, 1)
+        self.grid_3.addWidget(self.stop_2d_training_button, 4, 1, 1, 1)
+        self.grid_3.addWidget(self.save_2d_weights_button, 4, 2, 1, 1)
+
+    def set_grid_4(self):
+        """
+        Specifies the 3D model configuration, loss plot and train/stop button.
+        """
         model_3d_type = QLabel(self)
         model_3d_type.setText("3D model type")
         self.model_3d_type_selector = QComboBox(self)
@@ -198,48 +227,6 @@ class Widget(QMainWindow):
         self.load_3d_model_button.clicked.connect(self.load_weights)
         self.train_3d_model_from_scratch_checkbox.setChecked(False)
 
-        # TODO: add advanced model config dropdown. net config params, aff neighborhood, sigma
-
-        self.grid_3.addWidget(model_2d_type, 0, 0, 1, 1)
-        self.grid_3.addWidget(self.model_2d_type_selector, 0, 1, 1, 1)
-        self.grid_3.addWidget(model_3d_type, 1, 0, 1, 1)
-        self.grid_3.addWidget(self.model_3d_type_selector, 1, 1, 1, 1)
-        self.grid_3.addWidget(
-            self.train_3d_model_from_scratch_checkbox, 2, 0, 1, 2
-        )
-        self.grid_3.addWidget(self.load_3d_model_button, 3, 0, 1, 2)
-
-    def set_grid_4(self):
-        """
-        Specifies the loss plot and train/stop button.
-        """
-        # 2d model
-        self.losses_2d_widget = pg.PlotWidget()
-        self.losses_2d_widget.setBackground((37, 41, 49))
-        styles = {"color": "white", "font-size": "16px"}
-        self.losses_2d_widget.setLabel("left", "Loss 2D", **styles)
-        self.losses_2d_widget.setLabel("bottom", "Iterations", **styles)
-        self.start_2d_training_button = QPushButton("Start training 2D")
-        self.start_2d_training_button.setFixedSize(88, 30)
-        self.stop_2d_training_button = QPushButton("Stop training 2D")
-        self.stop_2d_training_button.setFixedSize(88, 30)
-        self.save_2d_weights_button = QPushButton("Save 2D model weights")
-        self.save_2d_weights_button.setFixedSize(88, 30)
-
-        self.grid_4.addWidget(self.losses_2d_widget, 0, 0, 4, 4)
-        self.grid_4.addWidget(self.start_2d_training_button, 4, 0, 1, 1)
-        self.grid_4.addWidget(self.stop_2d_training_button, 4, 1, 1, 1)
-        self.grid_4.addWidget(self.save_2d_weights_button, 4, 2, 1, 1)
-
-        self.start_2d_training_button.clicked.connect(
-            self.prepare_for_start_2d_training
-        )
-        self.stop_2d_training_button.clicked.connect(
-            self.prepare_for_stop_2d_training
-        )
-        self.save_2d_weights_button.clicked.connect(self.save_weights)
-
-        # 3d model
         self.losses_3d_widget = pg.PlotWidget()
         self.losses_3d_widget.setBackground((37, 41, 49))
         styles = {"color": "white", "font-size": "16px"}
@@ -252,10 +239,17 @@ class Widget(QMainWindow):
         self.save_3d_weights_button = QPushButton("Save 3d model weights")
         self.save_3d_weights_button.setFixedSize(88, 30)
 
-        self.grid_4.addWidget(self.losses_3d_widget, 5, 0, 4, 4)
-        self.grid_4.addWidget(self.start_3d_training_button, 9, 0, 1, 1)
-        self.grid_4.addWidget(self.stop_3d_training_button, 9, 1, 1, 1)
-        self.grid_4.addWidget(self.save_3d_weights_button, 9, 2, 1, 1)
+        self.grid_4.addWidget(model_3d_type, 0, 0, 1, 1)
+        self.grid_4.addWidget(self.model_3d_type_selector, 0, 1, 1, 1)
+        self.grid_4.addWidget(
+            self.train_3d_model_from_scratch_checkbox, 1, 0, 1, 2
+        )
+        self.grid_4.addWidget(self.load_3d_model_button, 2, 0, 1, 2)
+
+        self.grid_4.addWidget(self.losses_3d_widget, 3, 0, 4, 4)
+        self.grid_4.addWidget(self.start_3d_training_button, 7, 0, 1, 1)
+        self.grid_4.addWidget(self.stop_3d_training_button, 7, 1, 1, 1)
+        self.grid_4.addWidget(self.save_3d_weights_button, 7, 2, 1, 1)
 
         self.start_3d_training_button.setEnabled(False)
         self.stop_3d_training_button.setEnabled(False)
