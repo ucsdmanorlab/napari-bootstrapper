@@ -1,3 +1,6 @@
+import os
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
 from pathlib import Path
 
 import gunpowder as gp
@@ -80,6 +83,7 @@ class Widget(QMainWindow):
     def __init__(self, napari_viewer):
         super().__init__()
         self.viewer = napari_viewer
+
         self.scroll = QScrollArea()
         self.widget = QWidget()
         # initialize outer layout
