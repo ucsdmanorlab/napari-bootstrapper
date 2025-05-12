@@ -89,6 +89,9 @@ class Widget(QMainWindow):
         # initialize outer layout
         layout = QVBoxLayout()
 
+        self.tmp_dir = Path("/tmp/models")
+        self.tmp_dir.mkdir(exist_ok=True)
+
         # initialize individual grid layouts from top to bottom
         self.grid_0 = QGridLayout()  # title
         self.set_grid_0()
@@ -626,7 +629,7 @@ class Widget(QMainWindow):
                 dimension=dimension,
             )
             # if iteration % 20 == 0:
-            #     self.save_snapshot(batch, outputs, '/tmp/snapshots_2d.zarr')
+            #     self.save_snapshot(batch, outputs, f'/tmp/snapshots_{dimension}.zarr')
             yield loss, iteration
         print(f"{dimension.upper()} Training finished!")
         return
@@ -685,7 +688,7 @@ class Widget(QMainWindow):
                 "losses": getattr(self, f"losses_{dimension}"),
             }
             checkpoint_file_name = (
-                Path("/tmp/models")
+                self.tmp_dir
                 / f"last_{getattr(self, f'model_{dimension}_type_selector').currentText()}.pth"
             )
             torch.save(state, checkpoint_file_name)
