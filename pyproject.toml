@@ -26,9 +26,19 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
+    "scipy",
+    "scikit-image",
+    "torch",
+    "numba",
+    "gunpowder",
     "magicgui",
     "qtpy",
-    "scikit-image",
+    "matplotlib",
+    "napari",
+    "tqdm",
+    "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch.git",
+    "lsds @ git+https://github.com/yajivunev/lsd.git",
+    "mwatershed @ git+https://github.com/pattonw/mwatershed.git"
 ]
 
 [project.optional-dependencies]
