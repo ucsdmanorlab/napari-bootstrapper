@@ -37,8 +37,8 @@ def train_iteration(batch, model, criterion, optimizer, device, dimension):
     batch = [item.to(device) for item in batch]
 
     model.train()
-    if dimension == "3d" and len(batch) == 4:
-        outputs = model(torch.cat((batch[0], batch[1]), dim=1))
+    if dimension == "3d" and len(batch) > 3:
+        outputs = model(batch[0], batch[1])
     else:
         outputs = model(batch[0])
 
@@ -458,8 +458,24 @@ class Widget(QMainWindow):
 
         worker.start()
 
+    def remove_inference_attributes(self, dimension):
+        """
+        When inference is initiated, then existing predictions are removed.
+        """
+        if hasattr(self, f"affs_{dimension}"):
+            delattr(self, f"affs_{dimension}")
+        if hasattr(self, f"lsds_{dimension}"):
+            delattr(self, f"lsds_{dimension}")
+        if hasattr(self, "segmentation"):
+            delattr(self, "segmentation")
+
     @thread_worker
     def train(self, dimension):
+        """
+        Main train.
+        """
+
+        self.remove_inference_attributes(dimension)
 
         if dimension == "2d":
             for layer in self.viewer.layers:
@@ -718,6 +734,10 @@ class Widget(QMainWindow):
 
     @thread_worker
     def infer(self):
+
+        model_2d_type = self.model_2d_type_selector.currentText()
+        model_3d_type = self.model_3d_type_selector.currentText()
+        
         for layer in self.viewer.layers:
             if f"{layer}" == self.raw_selector.currentText():
                 raw_image_layer = layer
@@ -736,7 +756,7 @@ class Widget(QMainWindow):
             pass
         elif hasattr(self, "pretrained_2d_model_checkpoint"):
             model_2d = get_2d_model(
-                model_type=self.model_2d_type_selector.currentText(),
+                model_type=model_2d_type,
                 num_channels=num_channels,
                 num_fmaps=int(self.num_fmaps_2d_line.text()),
                 fmap_inc_factor=int(self.fmap_inc_factor_2d_line.text()),
@@ -759,7 +779,7 @@ class Widget(QMainWindow):
             pass
         elif hasattr(self, "pretrained_3d_model_checkpoint"):
             model_3d = get_3d_model(
-                model_type=self.model_3d_type_selector.currentText(),
+                model_type=model_3d_type,
                 num_channels=self.num_channels,
                 num_fmaps=int(self.num_fmaps_3d_line.text()),
                 fmap_inc_factor=int(self.fmap_inc_factor_3d_line.text()),
@@ -787,35 +807,70 @@ class Widget(QMainWindow):
         # set up pipeline
         voxel_size = 1, 1, 1
         offset = 0, 0, 0
+        input_shape_2d = 3, 212, 212
+        output_shape_2d = 1, 120, 120
+        input_shape_3d = 20, 332, 332
+        output_shape_3d = 4, 240, 240
         roi = gp.Roi(offset, raw_image_layer.data.shape[-3:])
 
         raw = gp.ArrayKey("RAW")
-        int_lsds = gp.ArrayKey("INTERMEDIATE_LSDS")
-        pred_affs = gp.ArrayKey("PRED_AFFS")
+        int_lsds = gp.ArrayKey("LSDS_2D")
+        int_affs = gp.ArrayKey("AFFS_2D")
+        pred_affs = gp.ArrayKey("AFFS_3D")
+
+        outs_2d = []
+        ins_3d = []
+
+        if model_2d_type == "2d_lsd":
+            outs_2d.append(int_lsds)
+        elif model_2d_type == "2d_affs":
+            outs_2d.append(int_affs)
+        elif model_2d_type == "2d_mtlsd":
+            outs_2d.append(int_lsds)
+            outs_2d.append(int_affs)
+        else:
+            raise ValueError(f"Invalid 2D model type: {model_2d_type}")
+
+        if "3d_affs_from_2d_lsd" == model_3d_type:
+            ins_3d.append(int_lsds)
+        elif "3d_affs_from_2d_affs" == model_3d_type:
+            ins_3d.append(int_affs)
+        elif "3d_affs_from_2d_mtlsd" == model_3d_type:
+            ins_3d.append(int_lsds)
+            ins_3d.append(int_affs)
+        else:
+            raise ValueError(f"Invalid 3D model type: {model_3d_type}")
 
         scan_1 = gp.BatchRequest()
-        scan_1.add(raw, (3, 212, 212))
-        scan_1.add(int_lsds, (1, 120, 120))
+        scan_1.add(raw, input_shape_2d)
+        for out in outs_2d:
+            scan_1.add(out, output_shape_2d)
 
         scan_2 = gp.BatchRequest()
-        scan_2.add(int_lsds, (20, 332, 332))
-        scan_2.add(pred_affs, (4, 240, 240))
+        for inp in ins_3d:
+            scan_2.add(inp, input_shape_3d)
+        scan_2.add(pred_affs, output_shape_3d)
 
         predict_2d = torchPredict(
             self.model_2d,
-            inputs={"input": raw},
+            inputs={0: raw},
             outputs={
-                0: int_lsds,
+                i: k
+                for i, k in enumerate(outs_2d)
             },
             array_specs={
-                int_lsds: gp.ArraySpec(roi=roi, voxel_size=voxel_size)
+                k: gp.ArraySpec(roi=roi, voxel_size=voxel_size)
+                for k in outs_2d
             },
             device=self.device_combo_box.currentText(),
         )
 
         predict_3d = torchPredict(
             self.model_3d,
-            inputs={"input": int_lsds},
+            inputs={
+                i: k
+                for i, k in enumerate(ins_3d)
+            },
             outputs={
                 0: pred_affs,
             },
@@ -839,33 +894,43 @@ class Widget(QMainWindow):
             + gp.Scan(scan_1)
         )
         request_1 = gp.BatchRequest()
-        request_1.add(int_lsds, roi.shape)
+        for out in outs_2d:
+            request_1.add(out, roi.shape)
 
-        # do not predict if latest 2d lsds are available
+        # do not predict if latest already available
         if hasattr(self, "affs_3d"):
             pass
         else:
-            if hasattr(self, "lsds_2d"):
+            if all(hasattr(self, str(attr).lower()) for attr in ins_3d):
                 pass
             else:
+                assert all(inp in outs_2d for inp in ins_3d), f"All 3D inputs {ins_3d} must be in 2D outputs {outs_2d}"
                 with gp.build(pipeline_1):
                     batch = pipeline_1.request_batch(request_1)
 
-                self.lsds_2d = batch[int_lsds].data
+                for out in outs_2d:
+                    setattr(self, str(out).lower(), batch[out].data)
 
             pipeline_2 = (
-                NpArraySource(
-                    self.lsds_2d,
-                    spec=gp.ArraySpec(roi=roi, voxel_size=voxel_size),
-                    key=int_lsds,
+                tuple(
+                    NpArraySource(
+                        getattr(self, str(inp).lower()),
+                        spec=gp.ArraySpec(roi=roi, voxel_size=voxel_size),
+                        key=inp,
+                    )
+                    for inp in ins_3d
                 )
-                + gp.Normalize(int_lsds, factor=1.0)
-                + gp.Pad(int_lsds, None, "reflect")
-                + predict_3d
-                + gp.Squeeze([pred_affs])
-                # + gp.IntensityScaleShift(pred_affs, 255, 0)
-                + gp.Scan(scan_2)
+                + gp.MergeProvider()
             )
+
+            for inp in ins_3d:
+                pipeline_2 += gp.Normalize(inp, factor=1.0)
+                pipeline_2 += gp.Pad(inp, None, "reflect")
+                
+            pipeline_2 += predict_3d
+            pipeline_2 += gp.Squeeze([pred_affs])
+            pipeline_2 += gp.Scan(scan_2)
+
             request_2 = gp.BatchRequest()
             request_2.add(pred_affs, roi.shape)
 
@@ -878,11 +943,14 @@ class Widget(QMainWindow):
 
         # create napari layers for returning
         pred_layers = [
-            (
-                self.lsds_2d[:3],
-                {"name": "2d lsds", "colormap": colormaps, "channel_axis": 0},
-                "image",
-            ),
+            *[
+                (
+                    getattr(self, str(out).lower())[:3],
+                    {"name": str(out).lower().replace('_', ' '), "colormap": colormaps, "channel_axis": 0},
+                    "image",
+                )
+                for out in outs_2d
+            ],
             (
                 self.affs_3d[:3],
                 {"name": "3d affs", "colormap": colormaps, "channel_axis": 0},
@@ -898,6 +966,7 @@ class Widget(QMainWindow):
         ]
 
     def on_return_infer(self, layers):
+        # TODO: check if this actually deletes
         if "2d lsds" in self.viewer.layers:
             del self.viewer.layers["2d lsds"]
         if "2d affs" in self.viewer.layers:

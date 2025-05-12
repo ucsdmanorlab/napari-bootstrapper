@@ -61,6 +61,7 @@ def get_loss(model_type):
 def get_2d_model(
     model_type,
     num_channels,
+    stack_infer=True,
     num_fmaps=12,
     fmap_inc_factor=5,
 ):

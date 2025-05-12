@@ -30,11 +30,13 @@ class AffsUNet(torch.nn.Module):
 
         if model_type == "3d_affs_from_2d_mtlsd":
             assert in_channels == 8, "in_channels must be 8=(6+2) for 2d_mtlsd"
-            # self.process_inputs = lambda *inputs: torch.cat(inputs, dim=1)
+            self.process_inputs = lambda *inputs: torch.cat(inputs, dim=1)
         elif model_type == "3d_affs_from_2d_lsd":
             assert in_channels == 6, "in_channels must be 6 for 2d_lsd"
+            self.process_inputs = lambda *inputs: inputs[0]
         elif model_type == "3d_affs_from_2d_affs":
             assert in_channels == 2, "in_channels must be 2 for 2d_affs"
+            self.process_inputs = lambda *inputs: inputs[0]
         else:
             raise ValueError("Invalid model_type")
 
@@ -53,10 +55,10 @@ class AffsUNet(torch.nn.Module):
             num_fmaps, 6, [[1, 1, 1]], activation="Sigmoid"
         )
 
-    def forward(self, x):
+    def forward(self, *inputs):
 
-        # z = self.process_inputs(input)
-        z = self.unet(x)
+        z = self.process_inputs(*inputs)
+        z = self.unet(z)
         affs = self.affs_head(z)
 
         return affs
