@@ -33,6 +33,7 @@ dependencies = [
     "gunpowder",
     "magicgui",
     "qtpy",
+    "pyqtgraph",
     "matplotlib",
     "napari",
     "tqdm",
