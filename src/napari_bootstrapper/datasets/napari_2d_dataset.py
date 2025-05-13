@@ -38,10 +38,11 @@ class Napari2DDataset(IterableDataset):
         self.voxel_size = gp.Coordinate(self.voxel_size)
         self.offset = gp.Coordinate(self.offset)
         self.shape = gp.Coordinate(self.image_layer.data.shape)
-        self.context = calc_max_padding(
-            self.output_shape, self.voxel_size, self.sigma
+        self.context = (
+            calc_max_padding(self.output_shape, self.voxel_size, self.sigma)
+            if self.model_type != "2d_affs"
+            else (gp.Coordinate(self.input_shape) - gp.Coordinate(self.output_shape)) // 2
         )
-
         # get unet num_channels from shape
         if len(self.shape) == 4:
             num_channels = self.shape[0]
@@ -66,13 +67,13 @@ class Napari2DDataset(IterableDataset):
 
         raw_spec = gp.ArraySpec(
             roi=gp.Roi(self.offset, self.voxel_size * self.shape),
-            dtype=np.float32,
+            dtype=self.image_layer.data.dtype,
             interpolatable=True,
             voxel_size=self.voxel_size,
         )
         labels_spec = gp.ArraySpec(
             roi=gp.Roi(self.offset, self.voxel_size * self.shape),
-            dtype=np.uint32,
+            dtype=self.labels_layer.data.dtype,
             interpolatable=False,
             voxel_size=self.voxel_size,
         )
@@ -97,12 +98,13 @@ class Napari2DDataset(IterableDataset):
                 ),
             )
             + gp.MergeProvider()
+            + gp.AsType(self.labels, np.uint32)
             + CreateMask(self.labels, self.mask)
             + gp.Pad(self.raw, None)
             + gp.Pad(self.labels, self.context)
-            + gp.Pad(self.mask, self.context)
-            + gp.RandomLocation(mask=self.mask, min_masked=0.001)
-            + gp.Normalize(self.raw, factor=1.0 / 255)  # TODO: UNHARDCODE THIS
+            + gp.RandomLocation()
+            + gp.Reject(mask=self.mask, min_masked=0.001, reject_probability=0.999)
+            + gp.Normalize(self.raw)
             + gp.SimpleAugment(transpose_only=[1, 2])
             + gp.DeformAugment(
                 control_point_spacing=(60, 60),

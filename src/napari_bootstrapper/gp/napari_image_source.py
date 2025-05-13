@@ -18,7 +18,7 @@ class NapariImageSource(gp.BatchProvider):
         self.array_spec = spec
 
         self.image = gp.Array(
-            data=image.data.astype(np.float32),
+            data=image.data,
             spec=spec,
         )
         self.key = key

@@ -546,8 +546,8 @@ class Widget(QMainWindow):
         criterion = get_loss(model_type).to(self.device)
 
         # Initialize model weights
-        # if self.train_2d_model_from_scratch_checkbox.isChecked():
-        #     for _name, layer in self.model_2d.named_modules():
+        # if getattr(self, f"train_{dimension}_model_from_scratch_checkbox").isChecked():
+        #     for _name, layer in getattr(self, f"model_{dimension}").named_modules():
         #         if isinstance(layer, torch.nn.modules.conv._ConvNd):
         #             torch.nn.init.kaiming_normal_(
         #                 layer.weight, nonlinearity="relu"
@@ -628,8 +628,8 @@ class Widget(QMainWindow):
                 device=self.device,
                 dimension=dimension,
             )
-            # if iteration % 20 == 0:
-            #     self.save_snapshot(batch, outputs, f'/tmp/snapshots_{dimension}.zarr')
+            if iteration % 1000 == 0:
+                self.save_snapshot(batch, outputs, f'/tmp/snapshots_{model_type}.zarr', iteration, dimension)
             yield loss, iteration
         print(f"{dimension.upper()} Training finished!")
         return
@@ -1077,46 +1077,42 @@ class Widget(QMainWindow):
         # self.setFixedWidth(320)
         self.setCentralWidget(self.scroll)
 
-    # def save_snapshot(self, batch, outputs, path):
-    #     import zarr
-    #     # Save the batch and outputs to a Zarr array
-    #     print(f"Saving snapshot to {path}")
-    #     f = zarr.open(path, mode="w")
+    def save_snapshot(self, batch, outputs, path, iteration, dimension):
+        import zarr
+        # Save the batch and outputs to a Zarr array
+        print(f"Saving snapshot to {path}")
+        f = zarr.open(path, mode="w")
 
-    #     is_2d = batch[-1].shape[-3] == 1
-    #     offset = (8,46,46) if not is_2d else (0,46,46)
+        is_2d = dimension == "2d"
+        offset = (8, 46, 46) if not is_2d else (0, 46, 46)
+        
+        def process_and_save_array(arr, iteration, name, idx, is_input=False):
+            array = arr.detach().cpu().numpy()
+            shape = array.shape
+            arr_name = f"{iteration}/{name}_{idx}"
+            print(f"{arr_name}: {shape}, is_2d: {is_2d}")
+            
+            if is_2d:
+                if len(shape) == 4:
+                    array = array.swapaxes(0, 1)
+                elif len(shape) == 5:
+                    array = array.swapaxes(0, 2)
+                    array = array[0]
+            else:
+                if len(shape) == 5:
+                    array = array.swapaxes(0, 2)
+                    array = array[0]
+                    
+            f[arr_name] = array
+            f[arr_name].attrs["offset"] = (0, 0, 0) if (is_input and idx == 0) else offset
+            f[arr_name].attrs["voxel_size"] = (1, 1, 1)
+            f[arr_name].attrs["axis_names"] = ["c^", "z", "y", "x"]
+        
+        # Process batch arrays
+        for i, arr in enumerate(batch):
+            process_and_save_array(arr, iteration, "arr", i, is_input=True)
+        
+        # Process output arrays
+        for i, arr in enumerate(outputs):
+            process_and_save_array(arr, iteration, "outputs", i, is_input=False)
 
-    #     for i,arr in enumerate(batch):
-    #         array = arr.detach().cpu().numpy()
-    #         shape = array.shape
-    #         print(f"shape: {shape}, is_2d: {is_2d}")
-    #         if is_2d:
-    #             if len(shape) == 4:
-    #                 array = array.swapaxes(0,1)
-    #             elif len(shape) == 5:
-    #                 array = array.swapaxes(0,2)
-    #                 array = array[0]
-    #         else:
-    #             if len(shape) == 5:
-    #                 array = array[0]
-    #         f[f"arr_{i}"] = array
-    #         f[f"arr_{i}"].attrs["offset"] = offset if i!=0 else (0,0,0)
-    #         f[f"arr_{i}"].attrs["voxel_size"] = (1, 1, 1)
-    #         f[f"arr_{i}"].attrs["axis_names"] = ["c^", "z", "y", "x"]
-    #     for i,arr in enumerate(outputs):
-    #         array = arr.detach().cpu().numpy()
-    #         shape = array.shape
-    #         print(f"shape: {shape}, is_2d: {is_2d}")
-    #         if is_2d:
-    #             if len(shape) == 4:
-    #                 array = array.swapaxes(0,1)
-    #             elif len(shape) == 5:
-    #                 array = array.swapaxes(0,2)
-    #                 array = array[0]
-    #         else:
-    #             if len(shape) == 5:
-    #                 array = array[0]
-    #         f[f"outputs_{i}"] = arr.detach().cpu().numpy()[0]
-    #         f[f"outputs_{i}"].attrs["offset"] = offset
-    #         f[f"outputs_{i}"].attrs["voxel_size"] = (1, 1, 1)
-    #         f[f"outputs_{i}"].attrs["axis_names"] = ["c^", "z", "y", "x"]
