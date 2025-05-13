@@ -229,17 +229,17 @@ class Napari3DDataset(IterableDataset):
 
                 sample = self.pipeline.request_batch(request)
 
+                gt_affs_data = sample[self.gt_affs].data.copy()
+                affs_weights_data = sample[self.affs_weights].data.copy()
                 if "2d_lsd" in self.model_type:
-                    yield sample[self.input_lsds].data, sample[
-                        self.gt_affs
-                    ].data, sample[self.affs_weights].data
+                    input_lsds_data = sample[self.input_lsds].data.copy()
+                    yield input_lsds_data, gt_affs_data, affs_weights_data
                 elif "2d_affs" in self.model_type:
-                    yield sample[self.input_affs].data, sample[
-                        self.gt_affs
-                    ].data, sample[self.affs_weights].data
+                    input_affs_data = sample[self.input_affs].data.copy()
+                    yield input_affs_data, gt_affs_data, affs_weights_data
                 elif "2d_mtlsd" in self.model_type:
-                    yield sample[self.input_lsds].data, sample[
-                        self.input_affs
-                    ].data, sample[self.gt_affs].data, sample[
-                        self.affs_weights
-                    ].data
+                    input_lsds_data = sample[self.input_lsds].data.copy()
+                    input_affs_data = sample[self.input_affs].data.copy()
+                    yield input_lsds_data, input_affs_data, gt_affs_data, affs_weights_data
+                else:
+                    raise ValueError(f"Unknown model type: {self.model_type}")

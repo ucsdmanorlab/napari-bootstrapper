@@ -513,9 +513,9 @@ class Widget(QMainWindow):
                 getattr(self, f"batch_size_{dimension}_line").text()
             ),
             drop_last=True,
-            num_workers=0 if dimension == "2d" else 8,
+            num_workers=8, #train_config.num_workers,
             pin_memory=True,
-            persistent_workers=dimension == "3d",
+            persistent_workers=True
         )
 
         # Load model and loss
@@ -1081,7 +1081,7 @@ class Widget(QMainWindow):
         import zarr
         # Save the batch and outputs to a Zarr array
         print(f"Saving snapshot to {path}")
-        f = zarr.open(path, mode="w")
+        f = zarr.open(path, mode="a")
 
         is_2d = dimension == "2d"
         offset = (8, 46, 46) if not is_2d else (0, 46, 46)

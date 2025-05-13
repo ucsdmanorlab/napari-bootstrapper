@@ -183,7 +183,6 @@ class Napari2DDataset(IterableDataset):
             )
         else:
             raise ValueError(f"Unknown model type: {self.model_type}")
-        self.pipeline += gp.PreCache()
 
     def __iter__(self):
         return iter(self.__yield_sample())
@@ -205,21 +204,21 @@ class Napari2DDataset(IterableDataset):
 
                 sample = self.pipeline.request_batch(request)
 
+                raw_data = sample[self.raw].data.copy()
+                
                 if self.model_type == "2d_lsd":
-                    yield sample[self.raw].data, sample[
-                        self.gt_lsds
-                    ].data, sample[self.lsds_weights].data
+                    gt_lsds_data = sample[self.gt_lsds].data.copy()
+                    lsds_weights_data = sample[self.lsds_weights].data.copy()
+                    yield raw_data, gt_lsds_data, lsds_weights_data
                 elif self.model_type == "2d_affs":
-                    yield sample[self.raw].data, sample[
-                        self.gt_affs
-                    ].data, sample[self.affs_weights].data
+                    gt_affs_data = sample[self.gt_affs].data.copy()
+                    affs_weights_data = sample[self.affs_weights].data.copy()
+                    yield raw_data, gt_affs_data, affs_weights_data
                 elif self.model_type == "2d_mtlsd":
-                    yield sample[self.raw].data, sample[
-                        self.gt_lsds
-                    ].data, sample[self.lsds_weights].data, sample[
-                        self.gt_affs
-                    ].data, sample[
-                        self.affs_weights
-                    ].data
+                    gt_lsds_data = sample[self.gt_lsds].data.copy()
+                    lsds_weights_data = sample[self.lsds_weights].data.copy()
+                    gt_affs_data = sample[self.gt_affs].data.copy()
+                    affs_weights_data = sample[self.affs_weights].data.copy()
+                    yield raw_data, gt_lsds_data, lsds_weights_data, gt_affs_data, affs_weights_data
                 else:
                     raise ValueError(f"Unknown model type: {self.model_type}")
