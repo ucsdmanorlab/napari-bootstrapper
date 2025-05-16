@@ -200,7 +200,7 @@ class Widget(QMainWindow):
         num_fmaps_2d_label.setText("Num fmaps 2D")
         self.num_fmaps_2d_line = QLineEdit(self)
         self.num_fmaps_2d_line.setAlignment(Qt.AlignCenter)
-        self.num_fmaps_2d_line.setText("12")
+        self.num_fmaps_2d_line.setText("24")
 
         fmap_inc_factor_2d_label = QLabel(self)
         fmap_inc_factor_2d_label.setText("Fmap inc factor 2D")
@@ -214,13 +214,13 @@ class Widget(QMainWindow):
         max_iterations_2d_label.setText("Max iterations 2D")
         self.max_iterations_2d_line = QLineEdit(self)
         self.max_iterations_2d_line.setAlignment(Qt.AlignCenter)
-        self.max_iterations_2d_line.setText("10000")
+        self.max_iterations_2d_line.setText("5000")
 
         batch_size_2d_label = QLabel(self)
         batch_size_2d_label.setText("Batch size 2D")
         self.batch_size_2d_line = QLineEdit(self)
         self.batch_size_2d_line.setAlignment(Qt.AlignCenter)
-        self.batch_size_2d_line.setText("8")
+        self.batch_size_2d_line.setText("10")
 
         self.grid_2.addWidget(raw_label, 0, 0, 1, 1)
         self.grid_2.addWidget(self.raw_selector, 0, 1, 1, 1)
@@ -298,8 +298,8 @@ class Widget(QMainWindow):
         self.model_3d_type_selector = QComboBox(self)
         self.model_3d_type_selector.addItems(
             [
-                "3d_affs_from_2d_affs",
                 "3d_affs_from_2d_lsd",
+                "3d_affs_from_2d_affs",
                 "3d_affs_from_2d_mtlsd",
             ]
         )  # TODO: update 3d model options based on selected 2d model type
@@ -513,7 +513,7 @@ class Widget(QMainWindow):
                 getattr(self, f"batch_size_{dimension}_line").text()
             ),
             drop_last=True,
-            num_workers=8, #train_config.num_workers,
+            num_workers=16, #train_config.num_workers,
             pin_memory=True,
             persistent_workers=True
         )
@@ -545,14 +545,6 @@ class Widget(QMainWindow):
         setattr(self, f"model_{dimension}", model.to(self.device))
         criterion = get_loss(model_type).to(self.device)
 
-        # Initialize model weights
-        # if getattr(self, f"train_{dimension}_model_from_scratch_checkbox").isChecked():
-        #     for _name, layer in getattr(self, f"model_{dimension}").named_modules():
-        #         if isinstance(layer, torch.nn.modules.conv._ConvNd):
-        #             torch.nn.init.kaiming_normal_(
-        #                 layer.weight, nonlinearity="relu"
-        #             )
-
         # Set optimizer
         setattr(
             self,
@@ -576,12 +568,12 @@ class Widget(QMainWindow):
                 pass
             else:
                 print(
-                    f"Resuming model from {getattr(self, f'pretrained_{dimension}_model_checkpoint').text()}"
+                    f"Resuming model from {getattr(self, f'pretrained_{dimension}_model_checkpoint')}"
                 )
                 state = torch.load(
                     getattr(
                         self, f"pretrained_{dimension}_model_checkpoint"
-                    ).text(),
+                    ),
                     map_location=self.device,
                 )
                 setattr(
@@ -745,13 +737,44 @@ class Widget(QMainWindow):
         model_2d_type = self.model_2d_type_selector.currentText()
         model_3d_type = self.model_3d_type_selector.currentText()
         
+        raw = gp.ArrayKey("RAW")
+        int_lsds = gp.ArrayKey("LSDS_2D")
+        int_affs = gp.ArrayKey("AFFS_2D")
+        pred_affs = gp.ArrayKey("AFFS_3D")
+
+        outs_2d = []
+        ins_3d = []
+
+        if model_2d_type == "2d_lsd":
+            outs_2d.append(int_lsds)
+        elif model_2d_type == "2d_affs":
+            outs_2d.append(int_affs)
+        elif model_2d_type == "2d_mtlsd":
+            outs_2d.append(int_lsds)
+            outs_2d.append(int_affs)
+        else:
+            raise ValueError(f"Invalid 2D model type: {model_2d_type}")
+
+        if "3d_affs_from_2d_lsd" == model_3d_type:
+            ins_3d.append(int_lsds)
+            num_channels_3d = 6
+        elif "3d_affs_from_2d_affs" == model_3d_type:
+            ins_3d.append(int_affs)
+            num_channels_3d = 2
+        elif "3d_affs_from_2d_mtlsd" == model_3d_type:
+            ins_3d.append(int_lsds)
+            ins_3d.append(int_affs)
+            num_channels_3d = 8
+        else:
+            raise ValueError(f"Invalid 3D model type: {model_3d_type}")
+
         for layer in self.viewer.layers:
             if f"{layer}" == self.raw_selector.currentText():
                 raw_image_layer = layer
-                num_channels = (
+                num_channels_2d = (
                     raw_image_layer.data.shape[0]
                     if len(raw_image_layer.data.shape) > 3
-                    else 1
+                    else 3
                 )
                 break
 
@@ -764,7 +787,7 @@ class Widget(QMainWindow):
         elif hasattr(self, "pretrained_2d_model_checkpoint"):
             model_2d = get_2d_model(
                 model_type=model_2d_type,
-                num_channels=num_channels,
+                num_channels=num_channels_2d,
                 num_fmaps=int(self.num_fmaps_2d_line.text()),
                 fmap_inc_factor=int(self.fmap_inc_factor_2d_line.text()),
             )
@@ -787,7 +810,7 @@ class Widget(QMainWindow):
         elif hasattr(self, "pretrained_3d_model_checkpoint"):
             model_3d = get_3d_model(
                 model_type=model_3d_type,
-                num_channels=self.num_channels,
+                num_channels=num_channels_3d,
                 num_fmaps=int(self.num_fmaps_3d_line.text()),
                 fmap_inc_factor=int(self.fmap_inc_factor_3d_line.text()),
             )
@@ -819,34 +842,6 @@ class Widget(QMainWindow):
         input_shape_3d = 20, 332, 332
         output_shape_3d = 4, 240, 240
         roi = gp.Roi(offset, raw_image_layer.data.shape[-3:])
-
-        raw = gp.ArrayKey("RAW")
-        int_lsds = gp.ArrayKey("LSDS_2D")
-        int_affs = gp.ArrayKey("AFFS_2D")
-        pred_affs = gp.ArrayKey("AFFS_3D")
-
-        outs_2d = []
-        ins_3d = []
-
-        if model_2d_type == "2d_lsd":
-            outs_2d.append(int_lsds)
-        elif model_2d_type == "2d_affs":
-            outs_2d.append(int_affs)
-        elif model_2d_type == "2d_mtlsd":
-            outs_2d.append(int_lsds)
-            outs_2d.append(int_affs)
-        else:
-            raise ValueError(f"Invalid 2D model type: {model_2d_type}")
-
-        if "3d_affs_from_2d_lsd" == model_3d_type:
-            ins_3d.append(int_lsds)
-        elif "3d_affs_from_2d_affs" == model_3d_type:
-            ins_3d.append(int_affs)
-        elif "3d_affs_from_2d_mtlsd" == model_3d_type:
-            ins_3d.append(int_lsds)
-            ins_3d.append(int_affs)
-        else:
-            raise ValueError(f"Invalid 3D model type: {model_3d_type}")
 
         scan_1 = gp.BatchRequest()
         scan_1.add(raw, input_shape_2d)
@@ -891,9 +886,9 @@ class Widget(QMainWindow):
             NapariImageSource(
                 image=raw_image_layer,
                 key=raw,
-                spec=gp.ArraySpec(roi=roi, voxel_size=voxel_size),
+                spec=gp.ArraySpec(roi=roi, voxel_size=voxel_size, dtype=raw_image_layer.data.dtype, interpolatable=True),
             )
-            + gp.Normalize(raw, factor=1.0 / 255)  # TODO: unharcode !!
+            + gp.Normalize(raw)
             + gp.Pad(raw, None, "reflect")
             + gp.IntensityScaleShift(raw, 2, -1)
             + gp.Unsqueeze([raw])

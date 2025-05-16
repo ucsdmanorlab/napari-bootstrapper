@@ -102,12 +102,11 @@ class Napari2DDataset(IterableDataset):
             + CreateMask(self.labels, self.mask)
             + gp.Pad(self.raw, None)
             + gp.Pad(self.labels, self.context)
-            + gp.RandomLocation()
-            + gp.Reject(mask=self.mask, min_masked=0.001, reject_probability=0.999)
+            + gp.RandomLocation(mask=self.mask, min_masked=0.001)
             + gp.Normalize(self.raw)
             + gp.SimpleAugment(transpose_only=[1, 2])
             + gp.DeformAugment(
-                control_point_spacing=(60, 60),
+                control_point_spacing=(32, 32),
                 jitter_sigma=(3.0, 3.0),
                 spatial_dims=2,
                 subsample=1,
@@ -130,6 +129,7 @@ class Napari2DDataset(IterableDataset):
                 self.raw,
                 prob_missing=0.0 if self.input_shape[0] == 1 else 0.05,
             )
+            + gp.IntensityScaleShift(self.raw, 2, -1)
         )
 
         if self.model_type == "2d_lsd":
@@ -143,8 +143,8 @@ class Napari2DDataset(IterableDataset):
             )
         elif self.model_type == "2d_affs":
             self.pipeline += (
-                gp.GrowBoundary(self.labels, self.mask, steps=1, only_xy=True)
-                + gp.AddAffinities(
+                # gp.GrowBoundary(self.labels, self.mask, steps=1, only_xy=True)
+                gp.AddAffinities(
                     self.neighborhood,
                     self.labels,
                     self.gt_affs,
@@ -166,9 +166,9 @@ class Napari2DDataset(IterableDataset):
                     sigma=self.sigma,
                     downsample=4,
                 )
-                + gp.GrowBoundary(
-                    self.labels, self.mask, steps=1, only_xy=True
-                )
+                # + gp.GrowBoundary(
+                #     self.labels, self.mask, steps=1, only_xy=True
+                # )
                 + gp.AddAffinities(
                     self.neighborhood,
                     self.labels,
