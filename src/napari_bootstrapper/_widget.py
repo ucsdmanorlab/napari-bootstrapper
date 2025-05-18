@@ -467,7 +467,7 @@ class Widget(QMainWindow):
 
     def remove_inference_attributes(self, dimension):
         """
-        When inference is initiated, then existing predictions are removed.
+        When training is initiated or new model is loaded, then existing predictions are removed.
         """
         if hasattr(self, f"affs_{dimension}"):
             delattr(self, f"affs_{dimension}")
@@ -570,32 +570,11 @@ class Widget(QMainWindow):
                 print(
                     f"Resuming model from {getattr(self, f'pretrained_{dimension}_model_checkpoint')}"
                 )
-                state = torch.load(
-                    getattr(
-                        self, f"pretrained_{dimension}_model_checkpoint"
-                    ),
-                    map_location=self.device,
+                self._load_weights(
+                    dimension,
+                    getattr(self, f'pretrained_{dimension}_model_checkpoint'),
+                    training=True,
                 )
-                setattr(
-                    self,
-                    f"start_iteration_{dimension}",
-                    state["iterations"][-1] + 1,
-                )
-                if "model_state_dict" in state:
-                    getattr(self, f"model_{dimension}").load_state_dict(
-                        state["model_state_dict"], strict=True
-                    )
-                    getattr(self, f"optimizer_{dimension}").load_state_dict(
-                        state["optim_state_dict"]
-                    )
-                    setattr(self, f"losses_{dimension}", state["losses"])
-                    setattr(
-                        self, f"iterations_{dimension}", state["iterations"]
-                    )
-                else:
-                    getattr(self, f"model_{dimension}").load_state_dict(
-                        state, strict=True
-                    )
 
         # Call Train Iteration
         for iteration, batch in tqdm(
@@ -731,6 +710,56 @@ class Widget(QMainWindow):
             self.inference_worker.quit()
             self.inference_worker = None
 
+    def reload_model_if_needed(self, dimension, model_type, num_channels):
+        """Helper function to load a model if needed (new type or new checkpoint)"""
+        model_attr = f"model_{dimension}"
+        checkpoint_attr = f"pretrained_{dimension}_model_checkpoint"
+        last_checkpoint_attr = f"last_loaded_{dimension}_model_checkpoint"
+        model_needs_reload = False
+        
+        # Check if model exists but model type has changed
+        if hasattr(self, model_attr):
+            model = getattr(self, model_attr)
+            if not hasattr(model, "model_type") or model.model_type != model_type:
+                model_needs_reload = True
+                print(f"{dimension.upper()} model type changed from {getattr(model, 'model_type', 'unknown')} to {model_type}")
+        else:
+            model_needs_reload = True
+            
+        # Check if checkpoint has changed
+        if hasattr(self, checkpoint_attr) and hasattr(self, last_checkpoint_attr):
+            current_checkpoint = getattr(self, checkpoint_attr)
+            last_checkpoint = getattr(self, last_checkpoint_attr)
+            if current_checkpoint != last_checkpoint:
+                model_needs_reload = True
+                print(f"{dimension.upper()} model checkpoint changed from {last_checkpoint} to {current_checkpoint}")
+        
+        # Load model if needed
+        if model_needs_reload and hasattr(self, checkpoint_attr):
+            checkpoint_path = getattr(self, checkpoint_attr)
+            
+            # Get the right model constructor function
+            model_func = get_2d_model if dimension == "2d" else get_3d_model
+            
+            # Create the model
+            new_model = model_func(
+                model_type=model_type,
+                num_channels=num_channels,
+                num_fmaps=int(getattr(self, f"num_fmaps_{dimension}_line").text()),
+                fmap_inc_factor=int(getattr(self, f"fmap_inc_factor_{dimension}_line").text()),
+            )
+            
+            # Store the model
+            setattr(self, model_attr, new_model.to(self.device))
+            
+            print(f"Loading {dimension.upper()} model from {checkpoint_path}")
+            self._load_weights(dimension, checkpoint_path)
+            
+            # Remember this checkpoint
+            setattr(self, last_checkpoint_attr, checkpoint_path)
+        elif not hasattr(self, checkpoint_attr):
+            raise ValueError(f"No checkpoint loaded for {dimension.upper()} model")
+
     @thread_worker
     def infer(self):
 
@@ -755,6 +784,16 @@ class Widget(QMainWindow):
         else:
             raise ValueError(f"Invalid 2D model type: {model_2d_type}")
 
+        for layer in self.viewer.layers:
+            if f"{layer}" == self.raw_selector.currentText():
+                raw_image_layer = layer
+                num_channels_2d = (
+                    raw_image_layer.data.shape[0] * 3
+                    if len(raw_image_layer.data.shape) > 3
+                    else 3
+                )
+                break
+
         if "3d_affs_from_2d_lsd" == model_3d_type:
             ins_3d.append(int_lsds)
             num_channels_3d = 6
@@ -768,67 +807,23 @@ class Widget(QMainWindow):
         else:
             raise ValueError(f"Invalid 3D model type: {model_3d_type}")
 
-        for layer in self.viewer.layers:
-            if f"{layer}" == self.raw_selector.currentText():
-                raw_image_layer = layer
-                num_channels_2d = (
-                    raw_image_layer.data.shape[0]
-                    if len(raw_image_layer.data.shape) > 3
-                    else 3
-                )
-                break
-
         # load model, set in eval mode
         if not hasattr(self, "device"):
             self.device = torch.device(self.device_combo_box.currentText())
 
-        if hasattr(self, "model_2d"):
-            pass
-        elif hasattr(self, "pretrained_2d_model_checkpoint"):
-            model_2d = get_2d_model(
-                model_type=model_2d_type,
-                num_channels=num_channels_2d,
-                num_fmaps=int(self.num_fmaps_2d_line.text()),
-                fmap_inc_factor=int(self.fmap_inc_factor_2d_line.text()),
-            )
-            self.model_2d = model_2d.to(self.device)
-            print(f"Loading model from {self.pretrained_2d_model_checkpoint}")
-            state = torch.load(
-                self.pretrained_2d_model_checkpoint, map_location=self.device
-            )
-            if "model_state_dict" in state:
-                self.model_2d.load_state_dict(
-                    state["model_state_dict"], strict=True
-                )
-            else:
-                self.model_2d.load_state_dict(state, strict=True)
-        else:
-            raise ValueError("No checkpoint loaded for 3D model")
+        self.reload_model_if_needed(
+            dimension="2d",
+            model_type=model_2d_type,
+            num_channels=num_channels_2d,
+        )
 
-        if hasattr(self, "model_3d"):
-            pass
-        elif hasattr(self, "pretrained_3d_model_checkpoint"):
-            model_3d = get_3d_model(
-                model_type=model_3d_type,
-                num_channels=num_channels_3d,
-                num_fmaps=int(self.num_fmaps_3d_line.text()),
-                fmap_inc_factor=int(self.fmap_inc_factor_3d_line.text()),
-            )
-            self.model_3d = model_3d.to(self.device)
-            print(f"Loading model from {self.pretrained_3d_model_checkpoint}")
-            state = torch.load(
-                self.pretrained_3d_model_checkpoint, map_location=self.device
-            )
-            if "model_state_dict" in state:
-                self.model_3d.load_state_dict(
-                    state["model_state_dict"], strict=True
-                )
-            else:
-                self.model_3d.load_state_dict(state, strict=True)
-        else:
-            raise ValueError("No checkpoint loaded for 3D model")
+        self.reload_model_if_needed(
+            dimension="3d",
+            model_type=model_3d_type,
+            num_channels=num_channels_3d,
+        )
 
-        self.model_2d = self.model_2d.to(self.device)
+        self.model_2d.to(self.device)
         self.model_2d.eval()
 
         self.model_3d.to(self.device)
@@ -893,6 +888,7 @@ class Widget(QMainWindow):
             + gp.IntensityScaleShift(raw, 2, -1)
             + gp.Unsqueeze([raw])
             + predict_2d
+            + gp.Squeeze(outs_2d)
             + gp.Scan(scan_1)
         )
         request_1 = gp.BatchRequest()
@@ -929,6 +925,7 @@ class Widget(QMainWindow):
                 pipeline_2 += gp.Normalize(inp, factor=1.0)
                 pipeline_2 += gp.Pad(inp, None, "reflect")
                 
+            pipeline_2 += gp.Unsqueeze(ins_3d)
             pipeline_2 += predict_3d
             pipeline_2 += gp.Squeeze([pred_affs])
             pipeline_2 += gp.Scan(scan_2)
@@ -944,24 +941,76 @@ class Widget(QMainWindow):
         colormaps = ["red", "green", "blue"]
 
         # create napari layers for returning
-        pred_layers = [
-            *[
+        pred_layers = []
+        
+        # Add individual layers for each 2D output
+        for out in outs_2d:
+            out_data = getattr(self, str(out).lower())
+            out_name = str(out).lower().replace('_', ' ')
+            num_channels = out_data.shape[0]
+            
+            if 'affs' in out_name:
+                channel_names = [f"{out_name} (y)", f"{out_name} (x)"]
+            elif 'lsds' in out_name:
+                # For LSDs: offset(y), offset(x), covar(yy), covar(xx), corr(yx), size
+                channel_names = [
+                    f"{out_name} offset (y)", 
+                    f"{out_name} offset (x)",
+                    f"{out_name} covar (yy)",
+                    f"{out_name} covar (xx)",
+                    f"{out_name} corr (yx)",
+                    f"{out_name} size"
+                ]
+            else:
+                channel_names = [f"{out_name} ({i})" for i in range(out_data.shape[0])]
+            
+            for i in range(num_channels):
+                component_name = channel_names[i]
+                component_color = colormaps[i % 3]
+                
+                pred_layers.append(
+                    (
+                        out_data[i:i+1].copy(),
+                        {
+                            "name": component_name,
+                            "colormap": component_color,
+                            "blending": "additive",
+                        },
+                        "image",
+                    )
+                )
+        
+        # For 3D affs: (z, short), (y, short), (x, short), (z, long), (y, long), (x, long)
+        affs_3d_names = [
+            "3d affs (z,short)",
+            "3d affs (y,short)",
+            "3d affs (x,short)",
+            "3d affs (z,long)",
+            "3d affs (y,long)",
+            "3d affs (x,long)"
+        ]
+        
+        num_affs_3d = 6
+        for i in range(num_affs_3d):
+            component_name = affs_3d_names[i]
+            component_color = colormaps[i % 3]
+            
+            pred_layers.append(
                 (
-                    getattr(self, str(out).lower())[:3],
-                    {"name": str(out).lower().replace('_', ' '), "colormap": colormaps, "channel_axis": 0},
+                    self.affs_3d[i:i+1].copy(),
+                    {
+                        "name": component_name,
+                        "colormap": component_color,
+                        "blending": "additive",
+                    },
                     "image",
                 )
-                for out in outs_2d
-            ],
-            (
-                self.affs_3d[:3],
-                {"name": "3d affs", "colormap": colormaps, "channel_axis": 0},
-                "image",
-            ),
-        ]
+            )
 
         # segment affs
         self.segmentation = segment_affs(self.affs_3d, method=self.seg_method)
+
+        print(f"Inference complete!")
 
         return pred_layers + [
             (self.segmentation, {"name": "segmentation"}, "labels")
@@ -1003,20 +1052,68 @@ class Widget(QMainWindow):
 
         print(f"Segmentation method: {self.seg_method}")
 
+
     def load_weights(self, dimension):
         """
-        Describes sequence of actions, which ensue after `Load Weights` button is pressed
-
+        Describes sequence of actions after `Load Weights` button is pressed
         """
         file_name, _ = QFileDialog.getOpenFileName(
             caption=f"Load {dimension.upper()} Model Weights"
         )
-
+        
         setattr(self, f"pretrained_{dimension}_model_checkpoint", file_name)
+        self.remove_inference_attributes(dimension)
 
         print(
             f" {dimension.upper()} Model weights will be loaded from {getattr(self, f'pretrained_{dimension}_model_checkpoint')}"
         )
+        
+    def _load_weights(self, dimension, model_checkpoint, training=False):
+        """
+        Gets model weights from a file and loads them into the model.
+        """
+
+        # Load the model architecture
+        if not hasattr(self, "device"):
+            self.device = torch.device(self.device_combo_box.currentText())
+
+        # Load the state dict
+        state = torch.load(model_checkpoint, map_location=self.device)
+
+        model = getattr(self, f"model_{dimension}")
+        
+        if "model_state_dict" in state:
+            model.load_state_dict(state["model_state_dict"], strict=True)
+
+            if training:
+                if "optim_state_dict" in state:
+                    getattr(self, f"optimizer_{dimension}").load_state_dict(state["optim_state_dict"])
+            
+                # If training state is available, restore it
+                if all(k in state for k in ["iterations", "losses"]):
+                    setattr(self, f"iterations_{dimension}", state["iterations"])
+                    setattr(self, f"losses_{dimension}", state["losses"])
+                    setattr(
+                        self,
+                        f"start_iteration_{dimension}",
+                        state["iterations"][-1] + 1,
+                    )
+                    getattr(self, f"losses_{dimension}_widget").clear()
+                    getattr(self, f"losses_{dimension}_widget").plot(
+                        state["iterations"], state["losses"]
+                    )
+                else:
+                    setattr(self, f"losses_{dimension}", [])
+                    setattr(self, f"iterations_{dimension}", [])
+                    setattr(self, f"start_iteration_{dimension}", 0)
+                    getattr(self, f"losses_{dimension}_widget").clear()
+
+        else:
+            model.load_state_dict(state, strict=True)
+        
+        # Set the model attribute
+        setattr(self, f"model_{dimension}", model.to(self.device))
+        print(f"Successfully loaded {dimension.upper()} model weights from {model_checkpoint}")
 
     def affect_load_weights(self, dimension):
         checkbox = getattr(

@@ -28,6 +28,8 @@ class AffsUNet(torch.nn.Module):
 
         super().__init__()
 
+        self.model_type = model_type
+
         if model_type == "3d_affs_from_2d_mtlsd":
             assert in_channels == 8, "in_channels must be 8=(6+2) for 2d_mtlsd"
             self.process_inputs = lambda *inputs: torch.cat(inputs, dim=1)
