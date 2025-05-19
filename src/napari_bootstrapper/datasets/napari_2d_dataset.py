@@ -5,7 +5,6 @@ from torch.utils.data import IterableDataset
 
 from ..gp.add_2d_lsds import Add2DLSDs
 from ..gp.calc_max_padding import calc_max_padding
-from ..gp.create_mask import CreateMask
 from ..gp.napari_image_source import NapariImageSource
 from ..gp.napari_labels_source import NapariLabelsSource
 from ..gp.smooth_augment import SmoothAugment
@@ -18,6 +17,10 @@ class Napari2DDataset(IterableDataset):
         labels_layer: Labels,
         mask_layer: Labels,
         model_type: str,
+        lsd_sigma: int = 20,
+        lsd_downsample: int = 4,
+        aff_neighborhood: list[list[int]] = [[-1, 0], [0, -1]],
+        aff_grow_boundary: int = 1,
     ):
         self.model_type = model_type
         self.image_layer = image_layer
@@ -29,21 +32,23 @@ class Napari2DDataset(IterableDataset):
         self.voxel_size = 1, 1, 1
         self.offset = 0, 0, 0
 
-        self.sigma = 0, 20, 20
-        self.neighborhood = [
-            [0, -1, 0],
-            [0, 0, -1],
+        self.lsd_sigma = (0, lsd_sigma, lsd_sigma)
+        self.lsd_downsample = lsd_downsample
+        self.aff_neighborhood = [
+            [0, *x] for x in aff_neighborhood
         ]
+        self.aff_grow_boundary = aff_grow_boundary
 
         self.voxel_size = gp.Coordinate(self.voxel_size)
         self.offset = gp.Coordinate(self.offset)
         self.shape = gp.Coordinate(self.image_layer.data.shape)
         context = (
-            calc_max_padding(self.output_shape, self.voxel_size, self.sigma)
+            calc_max_padding(self.output_shape, self.voxel_size, self.lsd_sigma)
             if self.model_type != "2d_affs"
             else (gp.Coordinate(self.input_shape) - gp.Coordinate(self.output_shape)) // 2
         )
         self.context = (0, context[1], context[2]) # ensure 2D padding
+
         # get unet num_channels from shape
         if len(self.shape) == 4:
             num_channels = self.shape[0]
@@ -104,10 +109,10 @@ class Napari2DDataset(IterableDataset):
                 ),
             )
             + gp.MergeProvider()
-            #+ gp.AsType(self.labels, np.uint32)
-            #+ CreateMask(self.labels, self.mask)
+            + gp.AsType(self.labels, np.uint32)
             + gp.Pad(self.raw, None)
             + gp.Pad(self.labels, self.context)
+            + gp.Pad(self.mask, self.context)
             + gp.RandomLocation(mask=self.mask, min_masked=0.001)
             + gp.Normalize(self.raw)
             + gp.SimpleAugment(transpose_only=[1, 2])
@@ -144,14 +149,16 @@ class Napari2DDataset(IterableDataset):
                 self.gt_lsds,
                 unlabelled=self.mask,
                 lsds_mask=self.lsds_weights,
-                sigma=self.sigma,
-                downsample=4,
+                sigma=self.lsd_sigma,
+                downsample=self.lsd_downsample,
             )
         elif self.model_type == "2d_affs":
             self.pipeline += (
-                # gp.GrowBoundary(self.labels, self.mask, steps=1, only_xy=True)
-                gp.AddAffinities(
-                    self.neighborhood,
+                gp.GrowBoundary(
+                    self.labels, self.mask, steps=self.aff_grow_boundary, only_xy=True
+                )
+                + gp.AddAffinities(
+                    self.aff_neighborhood,
                     self.labels,
                     self.gt_affs,
                     unlabelled=self.mask,
@@ -169,14 +176,14 @@ class Napari2DDataset(IterableDataset):
                     self.gt_lsds,
                     unlabelled=self.mask,
                     lsds_mask=self.lsds_weights,
-                    sigma=self.sigma,
-                    downsample=4,
+                    sigma=self.lsd_sigma,
+                    downsample=self.lsd_downsample,
                 )
-                # + gp.GrowBoundary(
-                #     self.labels, self.mask, steps=1, only_xy=True
-                # )
+                + gp.GrowBoundary(
+                    self.labels, self.mask, steps=self.aff_grow_boundary, only_xy=True
+                )
                 + gp.AddAffinities(
-                    self.neighborhood,
+                    self.aff_neighborhood,
                     self.labels,
                     self.gt_affs,
                     unlabelled=self.mask,
