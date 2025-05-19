@@ -73,7 +73,7 @@ DEFAULT_SEG_PARAMS = {
     "connected components": {
         "sigma": None,
         "noise_eps": None,
-        "bias": -0.5,
+        "bias": 0.0,
         "threshold": 0.5
     }
 }
@@ -196,6 +196,15 @@ class Widget(QMainWindow):
         if count == 0:
             self.labels_selector.addItems([f"{event.value}"])
 
+        count = 0
+        for i in range(self.mask_selector.count() - 1, -1, -1):
+            if self.mask_selector.itemText(i) == f"{event.value}":
+                # remove item
+                self.mask_selector.removeItem(i)
+                count = 1
+        if count == 0:
+            self.mask_selector.addItems([f"{event.value}"])      
+
     def set_grid_0(self):
         """
         Specifies the title of the plugin.
@@ -240,7 +249,16 @@ class Widget(QMainWindow):
             if isinstance(layer, Labels):
                 self.labels_selector.addItem(f"{layer}")
 
-        # TODO: add mask layer, and option to quickly generate a mask from labels
+        make_mask_button = QPushButton(self)
+        make_mask_button.setText("Make mask")
+        make_mask_button.clicked.connect(self.make_mask)
+
+        mask_label = QLabel(self)
+        mask_label.setText("Mask layer")
+        self.mask_selector = QComboBox(self)
+        for layer in self.viewer.layers:
+            if isinstance(layer, Labels) and layer.data.dtype == bool:
+                self.mask_selector.addItem(f"{layer}")
 
         model_2d_type_label = QLabel(self)
         model_2d_type_label.setText("2D model type")
@@ -277,16 +295,21 @@ class Widget(QMainWindow):
         self.grid_2.addWidget(self.raw_selector, 0, 1, 1, 1)
         self.grid_2.addWidget(labels_label, 1, 0, 1, 1)
         self.grid_2.addWidget(self.labels_selector, 1, 1, 1, 1)
-        self.grid_2.addWidget(model_2d_type_label, 2, 0, 1, 1)
-        self.grid_2.addWidget(self.model_2d_type_selector, 2, 1, 1, 1)
-        self.grid_2.addWidget(num_fmaps_2d_label, 3, 0, 1, 1)
-        self.grid_2.addWidget(self.num_fmaps_2d_line, 3, 1, 1, 1)
-        self.grid_2.addWidget(fmap_inc_factor_2d_label, 4, 0, 1, 1)
-        self.grid_2.addWidget(self.fmap_inc_factor_2d_line, 4, 1, 1, 1)
-        self.grid_2.addWidget(max_iterations_2d_label, 5, 0, 1, 1)
-        self.grid_2.addWidget(self.max_iterations_2d_line, 5, 1, 1, 1)
-        self.grid_2.addWidget(batch_size_2d_label, 6, 0, 1, 1)
-        self.grid_2.addWidget(self.batch_size_2d_line, 6, 1, 1, 1)
+        
+        self.grid_2.addWidget(make_mask_button, 2, 0, 1, 1)
+        self.grid_2.addWidget(mask_label, 3, 0, 1, 1)
+        self.grid_2.addWidget(self.mask_selector, 3, 1, 1, 1)
+
+        self.grid_2.addWidget(model_2d_type_label, 4, 0, 1, 1)
+        self.grid_2.addWidget(self.model_2d_type_selector, 4, 1, 1, 1)
+        self.grid_2.addWidget(num_fmaps_2d_label, 5, 0, 1, 1)
+        self.grid_2.addWidget(self.num_fmaps_2d_line, 5, 1, 1, 1)
+        self.grid_2.addWidget(fmap_inc_factor_2d_label, 6, 0, 1, 1)
+        self.grid_2.addWidget(self.fmap_inc_factor_2d_line, 6, 1, 1, 1)
+        self.grid_2.addWidget(max_iterations_2d_label, 7, 0, 1, 1)
+        self.grid_2.addWidget(self.max_iterations_2d_line, 7, 1, 1, 1)
+        self.grid_2.addWidget(batch_size_2d_label, 8, 0, 1, 1)
+        self.grid_2.addWidget(self.batch_size_2d_line, 8, 1, 1, 1)
 
     def set_grid_3(self):
         """
@@ -353,7 +376,7 @@ class Widget(QMainWindow):
                 "3d_affs_from_2d_affs",
                 "3d_affs_from_2d_mtlsd",
             ]
-        )  # TODO: update 3d model options based on selected 2d model type
+        )
 
         num_fmaps_3d_label = QLabel(self)
         num_fmaps_3d_label.setText("Num fmaps 3D")
@@ -543,6 +566,10 @@ class Widget(QMainWindow):
                 if f"{layer}" == self.labels_selector.currentText():
                     labels_layer = layer
                     break
+            for layer in self.viewer.layers:
+                if f"{layer}" == self.mask_selector.currentText():
+                    mask_layer = layer
+                    break
 
         model_type = getattr(
             self, f"model_{dimension}_type_selector"
@@ -551,7 +578,7 @@ class Widget(QMainWindow):
         # Create torch dataset
         if dimension == "2d":
             self.napari_dataset = Napari2DDataset(
-                raw_layer, labels_layer, model_type
+                raw_layer, labels_layer, mask_layer, model_type
             )
         elif dimension == "3d":
             self.napari_dataset = Napari3DDataset(model_type)
@@ -1080,6 +1107,19 @@ class Widget(QMainWindow):
 
         self.inference_worker.quit()
         self.prepare_for_stop_inference()
+
+    def make_mask(self):
+        for layer in self.viewer.layers:
+            if f"{layer}" == self.labels_selector.currentText():
+                labels_layer = layer
+                labels_name = f"{layer}"
+                break
+
+        print(f"Making mask for {labels_name}")
+        mask = labels_layer.data > 0
+        if f"mask_{labels_name}" in self.viewer.layers:
+            del self.viewer.layers[f"mask_{labels_name}"]
+        self.viewer.add_labels(mask.astype('uint8'), name=f"mask_{labels_name}")
 
     def open_advanced_options(self):
         """

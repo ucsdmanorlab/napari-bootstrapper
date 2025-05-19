@@ -18,7 +18,7 @@ class NapariLabelsSource(gp.BatchProvider):
         self.array_spec = spec
 
         self.labels = gp.Array(
-            data=labels.data.astype(np.uint32),
+            data=labels.data,
             spec=spec,
         )
         self.key = key

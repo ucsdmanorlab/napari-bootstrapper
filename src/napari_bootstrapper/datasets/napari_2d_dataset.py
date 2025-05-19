@@ -16,13 +16,13 @@ class Napari2DDataset(IterableDataset):
         self,
         image_layer: Image,
         labels_layer: Labels,
-        # mask_layer: Image,
+        mask_layer: Labels,
         model_type: str,
     ):
         self.model_type = model_type
         self.image_layer = image_layer
         self.labels_layer = labels_layer
-        # self.mask_layer = mask_layer
+        self.mask_layer = mask_layer
 
         self.input_shape = 3, 212, 212  # adjacent sections as extra channels
         self.output_shape = 1, 120, 120
@@ -78,12 +78,12 @@ class Napari2DDataset(IterableDataset):
             interpolatable=False,
             voxel_size=self.voxel_size,
         )
-        # mask_spec = gp.ArraySpec(
-        #     roi=gp.Roi(offset, voxel_size * shape),
-        #     dtype=np.int32,
-        #     interpolatable=False,
-        #     voxel_size=voxel_size,
-        # )
+        mask_spec = gp.ArraySpec(
+            roi=gp.Roi(self.offset, self.voxel_size * self.shape),
+            dtype=self.mask_layer.data.dtype,
+            interpolatable=False,
+            voxel_size=self.voxel_size,
+        )
 
         self.pipeline = (
             (
@@ -97,10 +97,15 @@ class Napari2DDataset(IterableDataset):
                     key=self.labels,
                     spec=labels_spec,
                 ),
+                NapariLabelsSource(
+                    labels=self.mask_layer,
+                    key=self.mask,
+                    spec=mask_spec,
+                ),
             )
             + gp.MergeProvider()
-            + gp.AsType(self.labels, np.uint32)
-            + CreateMask(self.labels, self.mask)
+            #+ gp.AsType(self.labels, np.uint32)
+            #+ CreateMask(self.labels, self.mask)
             + gp.Pad(self.raw, None)
             + gp.Pad(self.labels, self.context)
             + gp.RandomLocation(mask=self.mask, min_masked=0.001)
