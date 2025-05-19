@@ -5,8 +5,7 @@ from scipy.ndimage import (
     maximum_filter,
 )
 from skimage.segmentation import watershed as skimage_watershed
-
-# from mahotas import cwatershed
+import waterz
 
 
 def watershed_from_boundary_distance(
@@ -47,6 +46,7 @@ def watershed_from_affinities(
     fragments_in_xy=False,
     return_seeds=False,
     min_seed_distance=10,
+    threshold=0.5,
 ):
     """Extract initial fragments from affinities using a watershed
     transform. Returns the fragments and the maximal ID in it.
@@ -115,4 +115,13 @@ def watershed_from_affinities(
 
         fragments = ret[0]
 
-    return ret
+    # return fragments
+    thresholds = [threshold]
+    segmentations = waterz.agglomerate(
+        affs=affs.astype(np.float32),
+        fragments=fragments.copy(),
+        thresholds=thresholds,
+    )
+
+    segmentation = next(segmentations)
+    return segmentation

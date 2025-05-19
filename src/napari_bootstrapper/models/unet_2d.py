@@ -4,8 +4,6 @@ import torch
 import torch.nn as nn
 from funlib.learn.torch.models.conv4d import Conv4d
 
-from .batchrenorm import BatchRenorm2d, BatchRenorm3d
-
 class ConvPass(torch.nn.Module):
 
     def __init__(
@@ -24,7 +22,7 @@ class ConvPass(torch.nn.Module):
 
         self.activation = activation
         layers = []
-        # residual = []
+        residual = []
 
         for index, kernel_size in enumerate(kernel_sizes):
 
@@ -33,7 +31,6 @@ class ConvPass(torch.nn.Module):
             conv = {2: torch.nn.Conv2d, 3: torch.nn.Conv3d, 4: Conv4d}[
                 self.dims
             ]
-            norm = {2: BatchRenorm2d, 3: BatchRenorm3d}[self.dims]
 
             if padding == "same":
                 pad = tuple(k // 2 for k in kernel_size)
@@ -44,17 +41,15 @@ class ConvPass(torch.nn.Module):
                 layers.append(
                     conv(in_channels, out_channels, kernel_size, padding=pad)
                 )
-                layers.append(norm(out_channels))
             except KeyError:
                 raise RuntimeError(
                     f"{self.dims}D convolution not implemented"
                 ) from None
 
-            # if index == 0:
-            #     residual.append(
-            #         conv(in_channels, out_channels, kernel_size=1, padding=pad)
-            #     )
-            #     residual.append(norm(out_channels))
+            if index == 0:
+                residual.append(
+                    conv(in_channels, out_channels, kernel_size=1, padding=pad)
+                )
 
             in_channels = out_channels
 
@@ -66,7 +61,7 @@ class ConvPass(torch.nn.Module):
             self.out_activation = activation()
 
         self.conv_pass = torch.nn.Sequential(*layers)
-        # self.residual = torch.nn.Sequential(*residual)
+        self.residual = torch.nn.Sequential(*residual)
 
     def crop(self, to_crop, target_size):
         z, y, x = target_size[-3:]
@@ -80,11 +75,11 @@ class ConvPass(torch.nn.Module):
 
         out = self.conv_pass(x)
 
-        # res = self.residual(x)
+        res = self.residual(x)
 
-        # cropped = self.crop(res, out.size())
+        cropped = self.crop(res, out.size())
 
-        ret = out #+ cropped
+        ret = out + cropped
 
         if self.activation is not None:
             ret = self.out_activation(ret)

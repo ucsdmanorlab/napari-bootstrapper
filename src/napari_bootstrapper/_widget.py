@@ -33,6 +33,8 @@ from .gp.np_source import NpArraySource
 from .gp.torch_predict import torchPredict
 from .models import get_2d_model, get_3d_model, get_loss
 from .ws import watershed_from_affinities
+from .mws import mwatershed_from_affinities
+from .cc import compute_connected_component_segmentation
 
 
 def train_iteration(batch, model, criterion, optimizer, device, dimension):
@@ -75,8 +77,39 @@ def train_iteration(batch, model, criterion, optimizer, device, dimension):
 
 
 def segment_affs(affs, method="watershed"):
-    seg = watershed_from_affinities(affs[:3], fragments_in_xy=True)
-    return seg[0]
+    if method == "watershed":
+        print(f"Running watershed on affs of shape {affs[:3].shape}")
+        return watershed_from_affinities(affs[:3], fragments_in_xy=True)
+    elif method == "mutex watershed":
+        print(f"Running mutex watershed on affs of shape {affs.shape}")
+        return mwatershed_from_affinities(
+            affs,
+            neighborhood=[
+                [-1, 0, 0],
+                [0, -1, 0],
+                [0, 0, -1],
+                [-2, 0, 0],
+                [0, -8, 0],
+                [0, 0, -8],
+            ],
+            bias=[-0.5, -0.5, -0.5, -0.5, -0.5, -0.5],
+            sigma=None,
+            noise_eps=0.001,
+            strides=[
+                [1, 1, 1],
+                [1, 1, 1],
+                [1, 1, 1],
+                [2, 2, 2],
+                [2, 2, 2],
+                [2, 2, 2]
+            ],
+            randomized_strides=True,
+        )
+    elif method == "connected components":
+        print(f"Running connected components on affs of shape {affs.shape}")
+        return compute_connected_component_segmentation(affs[:3] > 0.5)
+    else:
+        raise ValueError("Invalid segmentation method")
 
 
 class Widget(QMainWindow):
@@ -394,8 +427,8 @@ class Widget(QMainWindow):
     def set_grid_5(self):
 
         self.radio_button_group = QButtonGroup(self)
-        self.radio_button_ws = QRadioButton("waterz")
-        self.radio_button_mws = QRadioButton("mwatershed")
+        self.radio_button_ws = QRadioButton("watershed")
+        self.radio_button_mws = QRadioButton("mutex watershed")
         self.radio_button_cc = QRadioButton("connected components")
         self.radio_button_group.addButton(self.radio_button_ws)
         self.radio_button_group.addButton(self.radio_button_mws)
@@ -552,7 +585,7 @@ class Widget(QMainWindow):
             torch.optim.Adam(
                 getattr(self, f"model_{dimension}").parameters(),
                 lr=1e-4,
-                weight_decay=0.01,
+                # weight_decay=0.01,
             ),
         )
 
@@ -1017,17 +1050,9 @@ class Widget(QMainWindow):
         ]
 
     def on_return_infer(self, layers):
-        # TODO: check if this actually deletes
-        if "2d lsds" in self.viewer.layers:
-            del self.viewer.layers["2d lsds"]
-        if "2d affs" in self.viewer.layers:
-            del self.viewer.layers["2d affs"]
-        if "3d affs" in self.viewer.layers:
-            del self.viewer.layers["3d affs"]
-        if "segmentation" in self.viewer.layers:
-            del self.viewer.layers["segmentation"]
-
         for data, metadata, layer_type in layers:
+            if metadata["name"] in self.viewer.layers:
+                del self.viewer.layers[metadata["name"]]
             if layer_type == "image":
                 self.viewer.add_image(data, **metadata)
             elif layer_type == "labels":
@@ -1044,14 +1069,13 @@ class Widget(QMainWindow):
 
     def update_post_processing(self):
         if self.radio_button_ws.isChecked():
-            self.seg_method = "waterz"
+            self.seg_method = "watershed"
         elif self.radio_button_mws.isChecked():
             self.seg_method = "mutex watershed"
         else:
             self.seg_method = "connected components"
 
         print(f"Segmentation method: {self.seg_method}")
-
 
     def load_weights(self, dimension):
         """

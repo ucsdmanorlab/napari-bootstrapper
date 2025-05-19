@@ -38,11 +38,12 @@ class Napari2DDataset(IterableDataset):
         self.voxel_size = gp.Coordinate(self.voxel_size)
         self.offset = gp.Coordinate(self.offset)
         self.shape = gp.Coordinate(self.image_layer.data.shape)
-        self.context = (
+        context = (
             calc_max_padding(self.output_shape, self.voxel_size, self.sigma)
             if self.model_type != "2d_affs"
             else (gp.Coordinate(self.input_shape) - gp.Coordinate(self.output_shape)) // 2
         )
+        self.context = (0, context[1], context[2]) # ensure 2D padding
         # get unet num_channels from shape
         if len(self.shape) == 4:
             num_channels = self.shape[0]
@@ -106,7 +107,7 @@ class Napari2DDataset(IterableDataset):
             + gp.Normalize(self.raw)
             + gp.SimpleAugment(transpose_only=[1, 2])
             + gp.DeformAugment(
-                control_point_spacing=(32, 32),
+                control_point_spacing=(10, 10),
                 jitter_sigma=(3.0, 3.0),
                 spatial_dims=2,
                 subsample=1,
