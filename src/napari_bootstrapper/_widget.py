@@ -22,6 +22,8 @@ from qtpy.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QVBoxLayout,
+    QDialog,
+    QDialogButtonBox,
     QWidget,
 )
 from tqdm import tqdm
@@ -34,7 +36,47 @@ from .gp.torch_predict import torchPredict
 from .models import get_2d_model, get_3d_model, get_loss
 from .ws import watershed_from_affinities
 from .mws import mwatershed_from_affinities
-from .cc import compute_connected_component_segmentation
+from .cc import cc_from_affinities
+
+
+DEFAULT_SEG_PARAMS = {
+    "watershed": {
+        "sigma": None,
+        "noise_eps": None,
+        "bias": None,
+        "threshold": 0.5,
+        "min_seed_distance": 10,
+        "fragments_in_xy": True
+    },
+    "mutex watershed": {
+        "sigma": None,
+        "noise_eps": 0.001,
+        "bias": [-0.5, -0.5, -0.5, -0.5, -0.5, -0.5],
+        "neighborhood": [
+            [-1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1],
+            [-2, 0, 0],
+            [0, -8, 0],
+            [0, 0, -8],
+        ],
+        "strides": [
+            [1, 1, 1],
+            [1, 1, 1],
+            [1, 1, 1],
+            [2, 2, 2],
+            [2, 2, 2],
+            [2, 2, 2]
+        ],
+        "randomized_strides": True
+    },
+    "connected components": {
+        "sigma": None,
+        "noise_eps": None,
+        "bias": -0.5,
+        "threshold": 0.5
+    }
+}
 
 
 def train_iteration(batch, model, criterion, optimizer, device, dimension):
@@ -76,38 +118,14 @@ def train_iteration(batch, model, criterion, optimizer, device, dimension):
     return loss.item(), outputs
 
 
-def segment_affs(affs, method="watershed"):
+def segment_affs(affs, method="mutex watershed", params=DEFAULT_SEG_PARAMS):
+    print(f"Segmenting affs of shape {affs.shape} with method {method} and params {params[method]}")
     if method == "watershed":
-        print(f"Running watershed on affs of shape {affs[:3].shape}")
-        return watershed_from_affinities(affs[:3], fragments_in_xy=True)
+        return watershed_from_affinities(affs[:3], **params[method])
     elif method == "mutex watershed":
-        print(f"Running mutex watershed on affs of shape {affs.shape}")
-        return mwatershed_from_affinities(
-            affs,
-            neighborhood=[
-                [-1, 0, 0],
-                [0, -1, 0],
-                [0, 0, -1],
-                [-2, 0, 0],
-                [0, -8, 0],
-                [0, 0, -8],
-            ],
-            bias=[-0.5, -0.5, -0.5, -0.5, -0.5, -0.5],
-            sigma=None,
-            noise_eps=0.001,
-            strides=[
-                [1, 1, 1],
-                [1, 1, 1],
-                [1, 1, 1],
-                [2, 2, 2],
-                [2, 2, 2],
-                [2, 2, 2]
-            ],
-            randomized_strides=True,
-        )
+        return mwatershed_from_affinities(affs, **params[method])
     elif method == "connected components":
-        print(f"Running connected components on affs of shape {affs.shape}")
-        return compute_connected_component_segmentation(affs[:3] > 0.5)
+        return cc_from_affinities(affs, **params[method])
     else:
         raise ValueError("Invalid segmentation method")
 
@@ -438,10 +456,8 @@ class Widget(QMainWindow):
         self.radio_button_cc.toggled.connect(self.update_post_processing)
         self.radio_button_ws.setChecked(True)
 
-        self.aff_bias_label = QLabel("Affinities Bias")
-        self.aff_bias_line = QLineEdit(self)
-        self.aff_bias_line.setAlignment(Qt.AlignCenter)
-        self.aff_bias_line.textChanged.connect(self.adjust_aff_bias)
+        self.advanced_options_button = QPushButton("Advanced Options")
+        self.advanced_options_button.clicked.connect(self.open_advanced_options)
 
         self.start_inference_button = QPushButton("Start inference")
         self.start_inference_button.setFixedSize(140, 30)
@@ -451,8 +467,7 @@ class Widget(QMainWindow):
         self.grid_5.addWidget(self.radio_button_ws, 0, 0, 1, 1)
         self.grid_5.addWidget(self.radio_button_mws, 0, 1, 1, 1)
         self.grid_5.addWidget(self.radio_button_cc, 0, 2, 1, 1)
-        self.grid_5.addWidget(self.aff_bias_label, 1, 0, 1, 1)
-        self.grid_5.addWidget(self.aff_bias_line, 1, 1, 1, 1)
+        self.grid_5.addWidget(self.advanced_options_button, 1, 0, 1, 2)
         self.grid_5.addWidget(self.start_inference_button, 2, 0, 1, 1)
         self.grid_5.addWidget(self.stop_inference_button, 2, 1, 1, 1)
         self.start_inference_button.clicked.connect(
@@ -461,6 +476,8 @@ class Widget(QMainWindow):
         self.stop_inference_button.clicked.connect(
             self.prepare_for_stop_inference
         )
+
+        self.seg_params = DEFAULT_SEG_PARAMS
 
     def set_grid_6(self):
         """
@@ -484,7 +501,7 @@ class Widget(QMainWindow):
         self.radio_button_ws.setEnabled(False)
         self.radio_button_mws.setEnabled(False)
         self.radio_button_cc.setEnabled(False)
-        self.aff_bias_line.setEnabled(False)
+        self.advanced_options_button.setEnabled(False)
         self.start_inference_button.setEnabled(False)
         self.stop_inference_button.setEnabled(False)
 
@@ -671,7 +688,7 @@ class Widget(QMainWindow):
         self.radio_button_ws.setEnabled(True)
         self.radio_button_mws.setEnabled(True)
         self.radio_button_cc.setEnabled(True)
-        self.aff_bias_line.setEnabled(True)
+        self.advanced_options_button.setEnabled(True)
         self.start_inference_button.setEnabled(True)
         self.stop_inference_button.setEnabled(True)
 
@@ -716,7 +733,7 @@ class Widget(QMainWindow):
         self.radio_button_ws.setEnabled(False)
         self.radio_button_mws.setEnabled(False)
         self.radio_button_cc.setEnabled(False)
-        self.aff_bias_line.setEnabled(False)
+        self.advanced_options_button.setEnabled(False)
         self.start_inference_button.setEnabled(False)
         self.stop_inference_button.setEnabled(True)
 
@@ -735,7 +752,7 @@ class Widget(QMainWindow):
         self.radio_button_ws.setEnabled(True)
         self.radio_button_mws.setEnabled(True)
         self.radio_button_cc.setEnabled(True)
-        self.aff_bias_line.setEnabled(True)
+        self.advanced_options_button.setEnabled(True)
         self.start_inference_button.setEnabled(True)
         self.stop_inference_button.setEnabled(True)
 
@@ -1041,7 +1058,7 @@ class Widget(QMainWindow):
             )
 
         # segment affs
-        self.segmentation = segment_affs(self.affs_3d, method=self.seg_method)
+        self.segmentation = segment_affs(self.affs_3d, method=self.seg_method, params=self.seg_params)
 
         print(f"Inference complete!")
 
@@ -1064,8 +1081,86 @@ class Widget(QMainWindow):
         self.inference_worker.quit()
         self.prepare_for_stop_inference()
 
-    def adjust_aff_bias(self):
-        self.aff_bias = list(map(float, self.aff_bias_line.text().split(",")))
+    def open_advanced_options(self):
+        """
+        Opens a dialog with advanced options for the selected segmentation method.
+        Uses a generic parameter editor that updates the dictionary in-place.
+        """
+        # Determine which segmentation method is selected
+        if self.radio_button_ws.isChecked():
+            method = "watershed"
+        elif self.radio_button_mws.isChecked():
+            method = "mutex watershed"
+        else:
+            method = "connected components"
+        
+        # Get the parameters dictionary for the selected method
+        params = self.seg_params[method]
+        
+        # Create a dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{method.title()} Parameters")
+        dialog.setMinimumWidth(400)
+        
+        # Create layout
+        layout = QVBoxLayout()
+        form_layout = QGridLayout()
+        
+        # Create form fields for each parameter
+        widgets = {}
+        row = 0
+        
+        for param_name, param_value in params.items():
+            label = QLabel(param_name.replace('_', ' ').title())
+            form_layout.addWidget(label, row, 0)
+            
+            if isinstance(param_value, bool):
+                widget = QCheckBox()
+                widget.setChecked(param_value)
+            else:
+                widget = QLineEdit()
+                widget.setText(str(param_value))
+                
+            form_layout.addWidget(widget, row, 1)
+            widgets[param_name] = widget
+            row += 1
+        
+        # Add buttons using standard dialog buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        )
+        
+        layout.addLayout(form_layout)
+        layout.addWidget(button_box)
+        dialog.setLayout(layout)
+        
+        # Connect button actions
+        def on_ok():
+            # Update parameters
+            for param_name, widget in widgets.items():
+                if isinstance(widget, QCheckBox):
+                    params[param_name] = widget.isChecked()
+                else:
+                    value = widget.text()
+                    if value.lower() == "none":
+                        params[param_name] = None
+                    else:
+                        try:
+                            # Try to parse as Python literal (list, float, etc.)
+                            import ast
+                            params[param_name] = ast.literal_eval(value)
+                        except (SyntaxError, ValueError):
+                            # If parsing fails, keep as string
+                            params[param_name] = value
+            
+            print(f"Updated parameters: {params}")
+            dialog.accept()
+        
+        button_box.accepted.connect(on_ok)
+        button_box.rejected.connect(dialog.reject)
+        
+        # Show dialog modally
+        dialog.exec_()
 
     def update_post_processing(self):
         if self.radio_button_ws.isChecked():

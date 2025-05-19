@@ -3,6 +3,7 @@ from scipy.ndimage import (
     distance_transform_edt,
     label,
     maximum_filter,
+    gaussian_filter,
 )
 from skimage.segmentation import watershed as skimage_watershed
 import waterz
@@ -46,6 +47,9 @@ def watershed_from_affinities(
     fragments_in_xy=False,
     return_seeds=False,
     min_seed_distance=10,
+    noise_eps=None,
+    sigma=None,
+    bias=None,
     threshold=0.5,
 ):
     """Extract initial fragments from affinities using a watershed
@@ -55,15 +59,43 @@ def watershed_from_affinities(
         or
         (fragments, max_id, seeds) if return_seeds == True"""
 
-    # add random noise
-    # random_noise = np.random.randn(*affs.shape) * 0.001
+    if sigma is not None:
+        # add 0 for channel dim
+        sigma = (0, *sigma)
+    else:
+        sigma = None
 
-    # # add smoothed affs, to solve a similar issue to the random noise. We want to bias
-    # # towards processing the central regions of objects first.
-    # smoothed_affs: np.ndarray = (gaussian_filter(affs, sigma=(0, 1, 2, 2)) - 0.5) * 0.01
+    # add some random noise to affs (this is particularly necessary if your affs are
+    #  stored as uint8 or similar)
+    # If you have many affinities of the exact same value the order they are processed
+    # in may be fifo, so you can get annoying streaks.
 
-    # affs = (affs + random_noise + smoothed_affs).astype(np.float32)
-    # affs = np.clip(affs, 0.0, 1.0)
+    ### tmp comment out ###
+
+    shift = np.zeros_like(affs)
+
+    if noise_eps is not None:
+        shift += np.random.randn(*affs.shape) * noise_eps
+
+    #######################
+
+    # add smoothed affs, to solve a similar issue to the random noise. We want to bias
+    # towards processing the central regions of objects first.
+
+    ### tmp comment out ###
+
+    if sigma is not None:
+        shift += gaussian_filter(affs, sigma=sigma) - affs
+
+    #######################
+    if bias is not None:
+        if type(bias) == float:
+            bias = [bias] * affs.shape[0]
+        else:
+            assert len(bias) == affs.shape[0]
+        shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
+
+    affs = affs + shift
 
     if fragments_in_xy:
 

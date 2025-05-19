@@ -1,6 +1,40 @@
 import numba
 import numpy as np
 from numba import jit
+from scipy.ndimage import gaussian_filter
+
+
+def cc_from_affinities(
+        affs: np.ndarray,
+        threshold: float = 0.5,
+        sigma: tuple[int, int, int] | None = None,
+        noise_eps: float | None = None,
+        bias: float | list[float] | None = None,
+) -> np.ndarray:
+    if sigma is not None:
+        # add 0 for channel dim
+        sigma = (0, *sigma)
+    else:
+        sigma = None
+
+    shift = np.zeros_like(affs)
+
+    if noise_eps is not None:
+        shift += np.random.randn(*affs.shape) * noise_eps
+
+    if sigma is not None:
+        shift += gaussian_filter(affs, sigma=sigma) - affs
+
+    if bias is not None:
+        if type(bias) == float:
+            bias = [bias] * affs.shape[0]
+        else:
+            assert len(bias) == affs.shape[0]
+        shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
+
+    hard_aff = (affs + shift) > threshold
+
+    return compute_connected_component_segmentation(hard_aff)
 
 
 @jit(nopython=True)
