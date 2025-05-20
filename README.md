@@ -9,11 +9,24 @@
 [![npe2](https://img.shields.io/badge/plugin-npe2-blue?link=https://napari.org/stable/plugins/index.html)](https://napari.org/stable/plugins/index.html)
 [![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
-A plugin to quickly generate dense 3D labels using sparse 2D labels.
+- [Introduction](#introduction)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+- [Citation](#citation)
+- [Issues](#issues)
+- [Funding](#funding)
+
+## Introduction
+
+`napari-bootstrapper` is a tool to quickly generate dense 3D labels using sparse 2D labels within napari.
+
+Dense 3D segmentations are generated using the 2D->3D method described in the preprint titled [_Sparse Annotation is Sufficient for Bootstrapping Dense Segmentation_](https://www.biorxiv.org/content/10.1101/2024.06.14.599135v2). In the preprint, we show sparse 2D annotations made in ~10 minutes on a single section can generate dense 3D segmentations that are reasonably good starting points for refining or bootstrapping.
+
+This plugin is limited to the 2D->3D method and is intended for small volumes that can fit in memory. For more complex bootstrapping workflows, dedicated 3D models, and block-wise processing of large volumes, we recommend using the [_Bootstrapper_](https://github.com/ucsdmanorlab/bootstrapper) CLI tool.
 
 ## Installation
 
-One could install `napari-bootstrapper` via conda and [pip]:
+We recommend installing `napari-bootstrapper` via conda and [pip]:
 
 1. Create a new environment called `napari-bootstrapper`:
 
@@ -38,19 +51,31 @@ pip install napari-bootstrapper
 pip install git+https://github.com/ucsdmanorlab/napari-bootstrapper.git
 ```
 
-## Contributing
 
-Contributions are very welcome. Tests can be run with [tox], please ensure
-the coverage at least stays the same before you submit a pull request.
+## Getting Started
+Run the following in your terminal:
+```bash
+conda activate napari-bootstrapper
+napari
+```
 
-## License
+## Citation
 
-Distributed under the terms of the [BSD-3] license,
-"napari-bootstrapper" is free and open source software
+If you find Bootstrapper useful in your research, please consider citing our **[preprint](https://www.biorxiv.org/content/10.1101/2024.06.14.599135v1)**:
+```
+@article {Thiyagarajan2024.06.14.599135,
+	author = {Thiyagarajan, Vijay Venu and Sheridan, Arlo and Harris, Kristen M. and Manor, Uri},
+	title = {Sparse Annotation is Sufficient for Bootstrapping Dense Segmentation},
+	year = {2024},
+	doi = {10.1101/2024.06.14.599135},
+	URL = {https://www.biorxiv.org/content/10.1101/2024.06.14.599135v2},
+}
+```
+
 
 ## Issues
 
-If you encounter any problems, please [file an issue] along with a detailed description.
+If you encounter any problems, please [file an issue](https://github.com/ucsdmanorlab/napari-bootstrapper/issues) along with a detailed description.
 
 [napari]: https://github.com/napari/napari
 [copier]: https://copier.readthedocs.io/en/stable/
@@ -67,3 +92,11 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
+
+
+## Funding
+Chan-Zuckerberg Imaging Scientist Award DOI https://doi.org/10.37921/694870itnyzk from the Chan Zuckerberg Initiative DAF, an advised fund of Silicon Valley Community Foundation (funder DOI 10.13039/100014989).
+
+NSF NeuroNex Technology Hub Award (1707356), NSF NeuroNex2 Award (2014862)
+
+![image](https://github.com/ucsdmanorlab/bootstrapper/assets/64760651/4b4a6029-e1ba-42bb-ab8b-d9357cc46239)
