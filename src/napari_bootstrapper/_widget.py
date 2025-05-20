@@ -512,6 +512,8 @@ class Widget(QMainWindow):
         self.make_mask_button.setEnabled(False)
         self.mask_selector.setEnabled(False)
 
+        self.train_2d_model_from_scratch_checkbox.setEnabled(False)
+        self.train_3d_model_from_scratch_checkbox.setEnabled(False)
         self.load_2d_model_button.setEnabled(False)
         self.load_3d_model_button.setEnabled(False)
         self.download_3d_model_button.setEnabled(False)
@@ -707,6 +709,9 @@ class Widget(QMainWindow):
         self.load_3d_model_button.setEnabled(True)
         self.download_3d_model_button.setEnabled(True)
 
+        self.train_2d_model_from_scratch_checkbox.setEnabled(True)
+        self.train_3d_model_from_scratch_checkbox.setEnabled(True)
+
         self.device_combo_box.setEnabled(True)
         self.raw_selector.setEnabled(True)
         self.labels_selector.setEnabled(True)
@@ -772,6 +777,9 @@ class Widget(QMainWindow):
         self.make_mask_button.setEnabled(False)
         self.mask_selector.setEnabled(False)
 
+        self.train_2d_model_from_scratch_checkbox.setEnabled(False)
+        self.train_3d_model_from_scratch_checkbox.setEnabled(False)
+
         self.load_2d_model_button.setEnabled(False)
         self.load_3d_model_button.setEnabled(False)
         self.download_3d_model_button.setEnabled(False)
@@ -804,6 +812,9 @@ class Widget(QMainWindow):
         self.labels_selector.setEnabled(True)
         self.make_mask_button.setEnabled(True)
         self.mask_selector.setEnabled(True)
+
+        self.train_2d_model_from_scratch_checkbox.setEnabled(True)
+        self.train_3d_model_from_scratch_checkbox.setEnabled(True)
 
         self.load_2d_model_button.setEnabled(True)
         self.load_3d_model_button.setEnabled(True)
