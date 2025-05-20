@@ -17,12 +17,13 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "scipy",
@@ -39,7 +40,6 @@ dependencies = [
     "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch.git",
     "lsds @ git+https://github.com/yajivunev/lsd.git",
     "mwatershed @ git+https://github.com/pattonw/mwatershed.git",
-    "waterz @ git+https://github.com/mpinb/waterz.git",
 ]
 
 [project.optional-dependencies]
@@ -77,7 +77,7 @@ version = {attr = "napari_bootstrapper.__init__.__version__"}
 
 [tool.black]
 line-length = 79
-target-version = ['py311', 'py312', 'py313']
+target-version = ['py310', 'py311', 'py312', 'py313']
 
 [tool.ruff]
 line-length = 79
@@ -122,5 +122,5 @@ exclude = [
     "*_vendor*",
 ]
 
-target-version = "py311"
+target-version = "py310"
 fix = true

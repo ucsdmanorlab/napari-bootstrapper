@@ -11,19 +11,19 @@ contributions:
       title: Load sample data
     - id: napari-bootstrapper.merge_labels
       title: Create Merge Labels
-      python_name: napari_bootstrapper._merge_split_widget:merge_labels
+      python_name: napari_bootstrapper.post._merge_split_widget:merge_labels
     - id: napari-bootstrapper.delete_labels
       title: Create Delete Labels
-      python_name: napari_bootstrapper._merge_split_widget:delete_labels
+      python_name: napari_bootstrapper.post._merge_split_widget:delete_labels
     - id: napari-bootstrapper.morph_labels
       title: Create Morph Labels
-      python_name: napari_bootstrapper._merge_split_widget:morph_labels
+      python_name: napari_bootstrapper.post._merge_split_widget:morph_labels
     - id: napari-bootstrapper.split_labels
       title: Create Split Labels
-      python_name: napari_bootstrapper._merge_split_widget:split_labels
+      python_name: napari_bootstrapper.post._merge_split_widget:split_labels
     - id: napari-bootstrapper.filter_labels
       title: Create Filter Labels
-      python_name: napari_bootstrapper._merge_split_widget:filter_labels
+      python_name: napari_bootstrapper.post._merge_split_widget:filter_labels
     - id: napari-bootstrapper.Widget
       python_name: napari_bootstrapper:Widget
       title: Bootstrapper
