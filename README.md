@@ -9,28 +9,34 @@
 [![npe2](https://img.shields.io/badge/plugin-npe2-blue?link=https://napari.org/stable/plugins/index.html)](https://napari.org/stable/plugins/index.html)
 [![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
-A plugin to quickly generate dense ground truth with sparse labels
-
-----------------------------------
-
-This [napari] plugin was generated with [copier] using the [napari-plugin-template].
-
-<!--
-Don't miss the full getting started guide to set up your new package:
-https://github.com/napari/napari-plugin-template#getting-started
-
-and review the napari docs for plugin developers:
-https://napari.org/stable/plugins/index.html
--->
+A plugin to quickly generate dense 3D labels using sparse 2D labels.
 
 ## Installation
 
-You can install `napari-bootstrapper` via [pip]:
+One could install `napari-bootstrapper` via conda and [pip]:
 
-    pip install napari-bootstrapper
+1. Create a new environment called `napari-bootstrapper`:
 
+```bash
+conda create -n napari-bootstrapper -c conda-forge python==3.11 napari pyqt boost
+```
 
+2. Activate the newly-created environment:
 
+```
+conda activate napari-bootstrapper
+```
+
+3. You can install `napari-bootstrapper` via [pip]:
+
+```bash
+pip install napari-bootstrapper
+```
+   - Or you can install the latest development version from github:
+
+```bash
+pip install git+https://github.com/ucsdmanorlab/napari-bootstrapper.git
+```
 
 ## Contributing
 
