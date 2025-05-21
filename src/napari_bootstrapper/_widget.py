@@ -27,6 +27,7 @@ from qtpy.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QTextEdit,
 )
 from tqdm import tqdm
 
@@ -217,6 +218,41 @@ class Widget(QMainWindow):
         if count == 0:
             self.mask_selector.addItems([f"{event.value}"])
 
+
+    def show_hide_channels_last(self):
+        if self.raw_selector.currentText() == "":
+            return
+        
+        raw_layer = self.viewer.layers[self.raw_selector.currentText()]
+        raw_data = raw_layer.data
+
+        if len(raw_data.shape) == 3:
+            # No channel dimension for 3D data (d,h,w)
+            self.channels_last = False
+            self.channels_last_checkbox.setEnabled(False)
+            self.channels_last_checkbox.hide()
+            self.channels_last_label.hide()
+
+        elif len(raw_data.shape) == 4:
+            self.channels_last_checkbox.setEnabled(True)
+            self.channels_last_checkbox.show()
+            self.channels_last_label.show()
+
+            if raw_layer.rgb:
+                # RGB layers in napari always have channels last
+                self.channels_last = True
+                self.channels_last_checkbox.setChecked(True)
+                self.channels_last_checkbox.setEnabled(False)
+            else:
+                self.update_channels_last()
+                
+        else:
+            raise ValueError(f"Images must be 3D or 4D. Current image shape: {raw_data.shape}")
+
+    def update_channels_last(self):
+        self.channels_last = self.channels_last_checkbox.isChecked()
+        print(f"channels_last: {self.channels_last}")
+
     def set_grid_0(self):
         """
         Specifies the title of the plugin.
@@ -256,6 +292,23 @@ class Widget(QMainWindow):
         for layer in self.viewer.layers:
             if isinstance(layer, Image):
                 self.raw_selector.addItem(f"{layer}")
+
+        self.channels_last = False
+        self.channels_last_label = QLabel(self)
+        self.channels_last_label.setText("Channels last?")
+        self.channels_last_label.setToolTip(
+            "Specify whether the image data has channels as the last dimension (e.g. DHWC format) or not (e.g. CDHW format)"
+        )
+        self.channels_last_checkbox = QCheckBox(self)
+        self.channels_last_checkbox.setToolTip(
+            "Check this if your data has channel dimension at the end (e.g. DHWC format)"
+        )
+        self.channels_last_checkbox.setChecked(self.channels_last)
+        self.channels_last_label.hide()
+        self.channels_last_checkbox.hide()
+
+        self.raw_selector.currentTextChanged.connect(self.show_hide_channels_last)
+        self.channels_last_checkbox.stateChanged.connect(self.update_channels_last)
 
         labels_label = QLabel(self)
         labels_label.setText("Labels layer")
@@ -305,18 +358,22 @@ class Widget(QMainWindow):
 
         self.grid_2.addWidget(raw_label, 1, 0, 1, 1)
         self.grid_2.addWidget(self.raw_selector, 1, 1, 1, 1)
-        self.grid_2.addWidget(labels_label, 2, 0, 1, 1)
-        self.grid_2.addWidget(self.labels_selector, 2, 1, 1, 1)
 
-        self.grid_2.addWidget(self.make_mask_button, 3, 0, 1, 2)
-        self.grid_2.addWidget(mask_label, 4, 0, 1, 1)
-        self.grid_2.addWidget(self.mask_selector, 4, 1, 1, 1)
+        self.grid_2.addWidget(self.channels_last_label, 2, 0, 1, 1)
+        self.grid_2.addWidget(self.channels_last_checkbox, 2, 1, 1, 1)
 
-        self.grid_2.addWidget(model_2d_heading, 5, 0, 1, 2)
+        self.grid_2.addWidget(labels_label, 3, 0, 1, 1)
+        self.grid_2.addWidget(self.labels_selector, 3, 1, 1, 1)
 
-        self.grid_2.addWidget(model_2d_type_label, 6, 0, 1, 1)
-        self.grid_2.addWidget(self.model_2d_type_selector, 6, 1, 1, 1)
-        self.grid_2.addWidget(self.advanced_2d_config_button, 7, 0, 1, 2)
+        self.grid_2.addWidget(self.make_mask_button, 4, 0, 1, 2)
+        self.grid_2.addWidget(mask_label, 5, 0, 1, 1)
+        self.grid_2.addWidget(self.mask_selector, 5, 1, 1, 1)
+
+        self.grid_2.addWidget(model_2d_heading, 6, 0, 1, 2)
+
+        self.grid_2.addWidget(model_2d_type_label, 7, 0, 1, 1)
+        self.grid_2.addWidget(self.model_2d_type_selector, 7, 1, 1, 1)
+        self.grid_2.addWidget(self.advanced_2d_config_button, 8, 0, 1, 2)
 
     def set_grid_3(self):
         """
@@ -339,7 +396,7 @@ class Widget(QMainWindow):
         button_layout = QVBoxLayout()
         button_row = QGridLayout()
 
-        self.start_2d_training_button = QPushButton("Start")
+        self.start_2d_training_button = QPushButton("Train")
         self.stop_2d_training_button = QPushButton("Stop")
         self.save_2d_weights_button = QPushButton("Save")
         self.stop_2d_training_button.setEnabled(False)
@@ -457,7 +514,7 @@ class Widget(QMainWindow):
         button_layout = QVBoxLayout()
         button_row = QGridLayout()
 
-        self.start_3d_training_button = QPushButton("Start")
+        self.start_3d_training_button = QPushButton("Train")
         self.stop_3d_training_button = QPushButton("Stop")
         self.save_3d_weights_button = QPushButton("Save")
         self.start_3d_training_button.setEnabled(False)
@@ -650,6 +707,7 @@ class Widget(QMainWindow):
                 labels_layer,
                 mask_layer,
                 model_type,
+                channels_last=self.channels_last,
                 **model_config["task"],
             )
         elif dimension == "3d":
@@ -975,6 +1033,13 @@ class Widget(QMainWindow):
         int_affs = gp.ArrayKey("AFFS_2D")
         pred_affs = gp.ArrayKey("AFFS_3D")
 
+        voxel_size = 1, 1, 1
+        offset = 0, 0, 0
+        input_shape_2d = 3, 212, 212
+        output_shape_2d = 1, 120, 120
+        input_shape_3d = 20, 332, 332
+        output_shape_3d = 4, 240, 240
+
         outs_2d = []
         ins_3d = []
 
@@ -991,11 +1056,12 @@ class Widget(QMainWindow):
         for layer in self.viewer.layers:
             if f"{layer}" == self.raw_selector.currentText():
                 raw_image_layer = layer
-                num_channels_2d = (
-                    raw_image_layer.data.shape[0] * 3
-                    if len(raw_image_layer.data.shape) > 3
-                    else 3
-                )
+                if len(raw_image_layer.data.shape) > 3:
+                    num_channels_2d = raw_image_layer.data.shape[-1 * self.channels_last] * input_shape_2d[0]
+                elif len(raw_image_layer.data.shape) == 3:
+                    num_channels_2d = input_shape_2d[0]
+                else:
+                    raise ValueError(f"Image layer must be 3D: {len(raw_image_layer.data.shape)}")
                 break
 
         if model_3d_type == "3d_affs_from_2d_lsd":
@@ -1034,13 +1100,13 @@ class Widget(QMainWindow):
         self.model_3d.eval()
 
         # set up pipeline
-        voxel_size = 1, 1, 1
-        offset = 0, 0, 0
-        input_shape_2d = 3, 212, 212
-        output_shape_2d = 1, 120, 120
-        input_shape_3d = 20, 332, 332
-        output_shape_3d = 4, 240, 240
-        roi = gp.Roi(offset, raw_image_layer.data.shape[-3:])
+        if len(raw_image_layer.data.shape) == 4:
+            if self.channels_last:
+                roi = gp.Roi(offset, raw_image_layer.data.shape[:-1])
+            else:
+                roi = gp.Roi(offset, raw_image_layer.data.shape[1:])
+        else:
+            roi = gp.Roi(offset, raw_image_layer.data.shape)
 
         scan_1 = gp.BatchRequest()
         scan_1.add(raw, input_shape_2d)
@@ -1085,6 +1151,7 @@ class Widget(QMainWindow):
                     dtype=raw_image_layer.data.dtype,
                     interpolatable=True,
                 ),
+                channels_last=self.channels_last,
             )
             + gp.Normalize(raw)
             + gp.Pad(raw, None, "reflect")
@@ -1249,13 +1316,21 @@ class Widget(QMainWindow):
                 labels_name = f"{layer}"
                 break
 
-        print(f"Making mask for {labels_name}")
-        mask = labels_layer.data > 0
+        # make sure len(labels_data.shape) == 3
+        if len(labels_layer.data.shape) == 4:
+            labels_data = labels_layer.data.max(axis=0)
+        elif len(labels_layer.data.shape) == 3:
+            labels_data = labels_layer.data
+        else:
+            raise ValueError("Labels layer must be 3D")
+
+        mask = labels_data > 0
         if f"mask_{labels_name}" in self.viewer.layers:
             del self.viewer.layers[f"mask_{labels_name}"]
         self.viewer.add_labels(
             mask.astype("uint8"), name=f"mask_{labels_name}"
         )
+        print(f"Made mask for {labels_name} and made new layer: mask_{labels_name}!")
 
     def open_parameter_dialog(self, title, params, param_filter=None):
         """

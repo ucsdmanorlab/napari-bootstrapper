@@ -21,11 +21,13 @@ class Napari2DDataset(IterableDataset):
         lsd_downsample: int = 4,
         aff_neighborhood: list[list[int]] = [[-1, 0], [0, -1]],
         aff_grow_boundary: int = 1,
+        channels_last: bool = False,
     ):
         self.model_type = model_type
         self.image_layer = image_layer
         self.labels_layer = labels_layer
         self.mask_layer = mask_layer
+        self.channels_last = channels_last
 
         self.input_shape = 3, 212, 212  # adjacent sections as extra channels
         self.output_shape = 1, 120, 120
@@ -41,7 +43,7 @@ class Napari2DDataset(IterableDataset):
 
         self.voxel_size = gp.Coordinate(self.voxel_size)
         self.offset = gp.Coordinate(self.offset)
-        self.shape = gp.Coordinate(self.image_layer.data.shape)
+        shape = self.image_layer.data.shape
         context = (
             calc_max_padding(self.output_shape, self.voxel_size, self.lsd_sigma)
             if self.model_type != "2d_affs"
@@ -50,9 +52,14 @@ class Napari2DDataset(IterableDataset):
         self.context = (0, context[1], context[2]) # ensure 2D padding
 
         # get unet num_channels from shape
-        if len(self.shape) == 4:
-            num_channels = self.shape[0]
-        elif len(self.shape) == 3:
+        if len(shape) == 4:
+            if not self.channels_last:
+                num_channels = shape[0]
+                self.shape = gp.Coordinate(shape[1:])
+            else:
+                num_channels = shape[-1]
+                self.shape = gp.Coordinate(shape[:-1])
+        elif len(shape) == 3:
             num_channels = 1
         else:
             raise ValueError("Image must be 3D")
@@ -96,6 +103,7 @@ class Napari2DDataset(IterableDataset):
                     image=self.image_layer,
                     key=self.raw,
                     spec=raw_spec,
+                    channels_last=self.channels_last,
                 ),
                 NapariLabelsSource(
                     labels=self.labels_layer,

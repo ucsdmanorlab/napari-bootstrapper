@@ -18,7 +18,11 @@ class NapariLabelsSource(gp.BatchProvider):
         self.array_spec = spec
 
         self.labels = gp.Array(
-            data=labels.data,
+            data=(
+                labels.data 
+                if len(labels.data.shape) <= 3 
+                else labels.data.max(axis=0)
+            ),
             spec=spec,
         )
         self.key = key
