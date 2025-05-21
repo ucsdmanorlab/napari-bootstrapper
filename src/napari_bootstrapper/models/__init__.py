@@ -4,6 +4,14 @@ from .model_2d import Model as Model2D
 from .model_3d import AffsUNet
 
 
+PRETRAINED_3D_MODEL_URLS = {
+    "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_affs.zip",
+    "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_lsd.zip",
+    "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_mtlsd.zip",
+    "3d_affs_from_3d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_3d_lsd.zip",
+}
+
+
 class WeightedMSELoss(torch.nn.Module):
     def __init__(self):
         super().__init__()

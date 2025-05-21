@@ -27,7 +27,6 @@ from qtpy.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
-    QTextEdit,
 )
 from tqdm import tqdm
 
@@ -37,57 +36,8 @@ from .datasets.napari_3d_dataset import Napari3DDataset
 from .gp.napari_image_source import NapariImageSource
 from .gp.np_source import NpArraySource
 from .gp.torch_predict import torchPredict
-from .models import get_2d_model, get_3d_model, get_loss
-from .post.cc import cc_from_affinities
-from .post.mws import mwatershed_from_affinities
-# from .post.ws import watershed_from_affinities
-
-DEFAULT_SEG_PARAMS = {
-    # "watershed": {
-    #     "sigma": None,
-    #     "noise_eps": None,
-    #     "bias": None,
-    #     "threshold": 0.5,
-    #     "min_seed_distance": 10,
-    #     "fragments_in_xy": True,
-    # },
-    "mutex watershed": {
-        "sigma": None,
-        "noise_eps": 0.001,
-        "bias": [-0.5, -0.5, -0.5, -0.5, -0.5, -0.5],
-        "neighborhood": [
-            [-1, 0, 0],
-            [0, -1, 0],
-            [0, 0, -1],
-            [-2, 0, 0],
-            [0, -8, 0],
-            [0, 0, -8],
-        ],
-        "strides": [
-            [1, 1, 1],
-            [1, 1, 1],
-            [1, 1, 1],
-            [2, 2, 2],
-            [2, 2, 2],
-            [2, 2, 2],
-        ],
-        "randomized_strides": True,
-    },
-    "connected components": {
-        "sigma": None,
-        "noise_eps": None,
-        "bias": 0.0,
-        "threshold": 0.5,
-    },
-}
-
-
-PRETRAINED_3D_MODEL_URLS = {
-    "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_affs.zip",
-    "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_lsd.zip",
-    "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_mtlsd.zip",
-    "3d_affs_from_3d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_3d_lsd.zip",
-}
+from .models import get_2d_model, get_3d_model, get_loss, PRETRAINED_3D_MODEL_URLS
+from .post import segment_affs, DEFAULT_SEG_PARAMS
 
 
 def train_iteration(batch, model, criterion, optimizer, device, dimension):
@@ -127,20 +77,6 @@ def train_iteration(batch, model, criterion, optimizer, device, dimension):
     loss.backward()
     optimizer.step()
     return loss.item(), outputs
-
-
-def segment_affs(affs, method="mutex watershed", params=DEFAULT_SEG_PARAMS):
-    print(
-        f"Segmenting affs of shape {affs.shape} with method {method} and params {params[method]}"
-    )
-    # if method == "watershed":
-    #     return watershed_from_affinities(affs[:3], **params[method])
-    if method == "mutex watershed":
-        return mwatershed_from_affinities(affs, **params[method])
-    elif method == "connected components":
-        return cc_from_affinities(affs, **params[method])
-    else:
-        raise ValueError("Invalid segmentation method")
 
 
 class Widget(QMainWindow):

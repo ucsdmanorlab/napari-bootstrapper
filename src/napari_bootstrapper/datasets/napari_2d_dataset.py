@@ -61,6 +61,7 @@ class Napari2DDataset(IterableDataset):
                 self.shape = gp.Coordinate(shape[:-1])
         elif len(shape) == 3:
             num_channels = 1
+            self.shape = gp.Coordinate(shape)
         else:
             raise ValueError("Image must be 3D")
         self.num_channels = num_channels * self.input_shape[0]
