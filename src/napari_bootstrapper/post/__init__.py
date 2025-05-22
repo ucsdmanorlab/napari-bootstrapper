@@ -1,5 +1,8 @@
+from pprint import pprint
+
 from .cc import cc_from_affinities
 from .mws import mwatershed_from_affinities
+
 # from .ws import watershed_from_affinities
 
 DEFAULT_SEG_PARAMS = {
@@ -44,8 +47,9 @@ DEFAULT_SEG_PARAMS = {
 
 def segment_affs(affs, method="mutex watershed", params=DEFAULT_SEG_PARAMS):
     print(
-        f"Segmenting affs of shape {affs.shape} with method {method} and params {params[method]}"
+        f"Segmenting affs of shape {affs.shape} with method {method} and params:"
     )
+    pprint(params[method])
     # if method == "watershed":
     #     return watershed_from_affinities(affs[:3], **params[method])
     if method == "mutex watershed":

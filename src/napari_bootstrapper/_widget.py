@@ -5,6 +5,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 import re
 import zipfile
 from pathlib import Path
+from pprint import pprint
 
 import gunpowder as gp
 import pyqtgraph as pg
@@ -30,14 +31,18 @@ from qtpy.QtWidgets import (
 )
 from tqdm import tqdm
 
-
 from .datasets.napari_2d_dataset import Napari2DDataset
 from .datasets.napari_3d_dataset import Napari3DDataset
 from .gp.napari_image_source import NapariImageSource
 from .gp.np_source import NpArraySource
 from .gp.torch_predict import torchPredict
-from .models import get_2d_model, get_3d_model, get_loss, PRETRAINED_3D_MODEL_URLS
-from .post import segment_affs, DEFAULT_SEG_PARAMS
+from .models import (
+    PRETRAINED_3D_MODEL_URLS,
+    get_2d_model,
+    get_3d_model,
+    get_loss,
+)
+from .post import DEFAULT_SEG_PARAMS, segment_affs
 
 
 def train_iteration(batch, model, criterion, optimizer, device, dimension):
@@ -154,11 +159,10 @@ class Widget(QMainWindow):
         if count == 0:
             self.mask_selector.addItems([f"{event.value}"])
 
-
     def show_hide_channels_last(self):
         if self.raw_selector.currentText() == "":
             return
-        
+
         raw_layer = self.viewer.layers[self.raw_selector.currentText()]
         raw_data = raw_layer.data
 
@@ -181,13 +185,28 @@ class Widget(QMainWindow):
                 self.channels_last_checkbox.setEnabled(False)
             else:
                 self.update_channels_last()
-                
+
         else:
-            raise ValueError(f"Images must be 3D or 4D. Current image shape: {raw_data.shape}")
+            raise ValueError(
+                f"Images must be 3D or 4D. Current image shape: {raw_data.shape}"
+            )
 
     def update_channels_last(self):
         self.channels_last = self.channels_last_checkbox.isChecked()
         print(f"channels_last: {self.channels_last}")
+
+    def update_3d_model_type_selector(self):
+        self.model_3d_type_selector.clear()
+        if self.model_2d_type_selector.currentText() in [
+            "2d_affs",
+            "2d_mtlsd",
+        ]:
+            self.model_3d_type_selector.addItems(["3d_affs_from_2d_affs"])
+        if self.model_2d_type_selector.currentText() in ["2d_lsd", "2d_mtlsd"]:
+            self.model_3d_type_selector.addItems(["3d_affs_from_2d_lsd"])
+        if self.model_2d_type_selector.currentText() == "2d_mtlsd":
+            self.model_3d_type_selector.addItems(["3d_affs_from_2d_mtlsd"])
+            self.model_3d_type_selector.setCurrentText("3d_affs_from_2d_mtlsd")
 
     def set_grid_0(self):
         """
@@ -207,11 +226,15 @@ class Widget(QMainWindow):
 
         device_label = QLabel(self)
         device_label.setText("Device")
+        device_label.setToolTip("Select the device for training and inference")
         self.device_combo_box = QComboBox(self)
         self.device_combo_box.addItem("cpu")
-        self.device_combo_box.addItem("cuda:0")
-        self.device_combo_box.addItem("mps")
-        self.device_combo_box.setCurrentText("mps")
+        if torch.cuda.is_available():
+            self.device_combo_box.addItem("cuda:0")
+            self.device_combo_box.setCurrentText("cuda:0")
+        if torch.backends.mps.is_available():
+            self.device_combo_box.addItem("mps")
+            self.device_combo_box.setCurrentText("mps")
         self.grid_1.addWidget(device_label, 0, 0, 1, 1)
         self.grid_1.addWidget(self.device_combo_box, 0, 1, 1, 1)
 
@@ -220,10 +243,18 @@ class Widget(QMainWindow):
         2D model and training config.
         """
         data_heading = self.set_section_heading("Data")
+        data_heading.setToolTip(
+            "Step 1: Specify the 3D image to train on and segment, its training labels and training mask"
+        )
+
         model_2d_heading = self.set_section_heading("2D Model")
+        model_2d_heading.setToolTip(
+            "Step 2: Configure and train the 2D model. Optionally, load a pretrained model."
+        )
 
         raw_label = QLabel(self)
         raw_label.setText("Image layer")
+        raw_label.setToolTip("Select the image layer to train on")
         self.raw_selector = QComboBox(self)
         for layer in self.viewer.layers:
             if isinstance(layer, Image):
@@ -233,21 +264,26 @@ class Widget(QMainWindow):
         self.channels_last_label = QLabel(self)
         self.channels_last_label.setText("Channels last?")
         self.channels_last_label.setToolTip(
-            "Specify whether the image data has channels as the last dimension (e.g. DHWC format) or not (e.g. CDHW format)"
+            "Specify whether the image data has channels as the last dimension (DHWC format) or not (CDHW format)"
         )
         self.channels_last_checkbox = QCheckBox(self)
         self.channels_last_checkbox.setToolTip(
-            "Check this if your data has channel dimension at the end (e.g. DHWC format)"
+            "Check this if your data has channel dimension at the end (DHWC format)"
         )
         self.channels_last_checkbox.setChecked(self.channels_last)
         self.channels_last_label.hide()
         self.channels_last_checkbox.hide()
 
-        self.raw_selector.currentTextChanged.connect(self.show_hide_channels_last)
-        self.channels_last_checkbox.stateChanged.connect(self.update_channels_last)
+        self.raw_selector.currentTextChanged.connect(
+            self.show_hide_channels_last
+        )
+        self.channels_last_checkbox.stateChanged.connect(
+            self.update_channels_last
+        )
 
         labels_label = QLabel(self)
         labels_label.setText("Labels layer")
+        labels_label.setToolTip("Select the labels layer to use for training")
         self.labels_selector = QComboBox(self)
         for layer in self.viewer.layers:
             if isinstance(layer, Labels):
@@ -255,32 +291,48 @@ class Widget(QMainWindow):
 
         self.make_mask_button = QPushButton(self)
         self.make_mask_button.setText("Make mask")
+        self.make_mask_button.setToolTip(
+            "Make a binary mask from the labels data (1 where labeled, 0 elsewhere)"
+        )
         self.make_mask_button.clicked.connect(self.make_mask)
 
         mask_label = QLabel(self)
         mask_label.setText("Mask layer")
+        mask_label.setToolTip(
+            "Select the mask layer to use for training (loss is computed only where mask is 1)"
+        )
         self.mask_selector = QComboBox(self)
         for layer in self.viewer.layers:
-            if isinstance(layer, Labels) and layer.data.dtype == "uint8":
+            if isinstance(layer, Labels):
                 self.mask_selector.addItem(f"{layer}")
 
         model_2d_type_label = QLabel(self)
-        model_2d_type_label.setText("Model type")
+        model_2d_type_label.setText("Model task")
+        model_2d_type_label.setToolTip(
+            "Select the task (output) for 2D model: 2D affs (affinity maps), 2D lsd (local shape descriptors), or 2D mtlsd (multi-task: lsd and affs)"
+        )
         self.model_2d_type_selector = QComboBox(self)
-        self.model_2d_type_selector.addItems(["2d_lsd", "2d_affs", "2d_mtlsd"])
+        self.model_2d_type_selector.addItems(["2d_affs", "2d_lsd", "2d_mtlsd"])
+        self.model_2d_type_selector.currentTextChanged.connect(
+            self.update_3d_model_type_selector
+        )
 
-        self.advanced_2d_config_button = QPushButton("Advanced Model Config")
+        self.advanced_2d_config_button = QPushButton("Advanced Config")
+        self.advanced_2d_config_button.setToolTip(
+            "Configure training, network, and task parameters for 2D model"
+        )
         self.advanced_2d_config_button.clicked.connect(
             lambda: self.open_model_options("2d")
         )
 
         self.model_2d_config = {
-            "batch_size": 10,
+            "batch_size": 8,
             "max_iterations": 5000,
-            "num_workers": 16,
+            "num_workers": 8,
+            "save_snapshots_every": 1000,
             "net": {
-                "num_fmaps": 24,
-                "fmap_inc_factor": 3,
+                "num_fmaps": 12,
+                "fmap_inc_factor": 5,
             },
             "task": {
                 "lsd_sigma": 20,
@@ -318,8 +370,14 @@ class Widget(QMainWindow):
 
         self.train_2d_model_from_scratch_checkbox = QCheckBox(self)
         self.train_2d_model_from_scratch_checkbox.setText("Train from scratch")
+        self.train_2d_model_from_scratch_checkbox.setToolTip(
+            "Check to train 2D model from scratch (will reset current model state and weights)"
+        )
 
         self.load_2d_model_button = QPushButton("Load model")
+        self.load_2d_model_button.setToolTip(
+            "Select checkpoint file to load 2D model state or weights from"
+        )
 
         self.losses_2d_widget = pg.PlotWidget()
         self.losses_2d_widget.setBackground((37, 41, 49))
@@ -333,8 +391,13 @@ class Widget(QMainWindow):
         button_row = QGridLayout()
 
         self.start_2d_training_button = QPushButton("Train")
+        self.start_2d_training_button.setToolTip("Start training 2D model")
         self.stop_2d_training_button = QPushButton("Stop")
+        self.stop_2d_training_button.setToolTip("Stop training 2D model")
         self.save_2d_weights_button = QPushButton("Save")
+        self.save_2d_weights_button.setToolTip(
+            "Save 2D model state to checkpoint file"
+        )
         self.stop_2d_training_button.setEnabled(False)
         self.save_2d_weights_button.setEnabled(False)
 
@@ -383,19 +446,29 @@ class Widget(QMainWindow):
         """
 
         model_3d_heading = self.set_section_heading("3D Model")
+        model_3d_heading.setToolTip(
+            "Step 3: Configure and load the 3D affinities model. Optionally, train from scratch."
+        )
 
         model_3d_type_label = QLabel(self)
         model_3d_type_label.setText("Model type")
+        model_3d_type_label.setToolTip(
+            "Select the 2D input for 3D affinities model (only relevant when 2D model is 2D mtlsd, otherwise automatically inferred)"
+        )
+
         self.model_3d_type_selector = QComboBox(self)
         self.model_3d_type_selector.addItems(
             [
-                "3d_affs_from_2d_lsd",
                 "3d_affs_from_2d_affs",
+                "3d_affs_from_2d_lsd",
                 "3d_affs_from_2d_mtlsd",
             ]
         )
 
-        self.advanced_3d_config_button = QPushButton("Advanced Model Config")
+        self.advanced_3d_config_button = QPushButton("Advanced Config")
+        self.advanced_3d_config_button.setToolTip(
+            "Configure training, network, and task parameters for 3D model"
+        )
         self.advanced_3d_config_button.clicked.connect(
             lambda: self.open_model_options("3d")
         )
@@ -403,7 +476,8 @@ class Widget(QMainWindow):
         self.model_3d_config = {
             "batch_size": 1,
             "max_iterations": 10000,
-            "num_workers": 16,
+            "num_workers": 8,
+            "save_snapshots_every": 1000,
             "net": {
                 "num_fmaps": 8,
                 "fmap_inc_factor": 3,
@@ -427,10 +501,19 @@ class Widget(QMainWindow):
         self.train_3d_model_from_scratch_checkbox = QCheckBox(
             "Train from scratch"
         )
+        self.train_3d_model_from_scratch_checkbox.setToolTip(
+            "Check to train 3D model from scratch (will reset current model state and weights)"
+        )
 
         model_buttons_layout = QGridLayout()
         self.download_3d_model_button = QPushButton("Download")
+        self.download_3d_model_button.setToolTip(
+            "Download and load the latest pretrained weights for current 3D model type"
+        )
         self.load_3d_model_button = QPushButton("Load")
+        self.load_3d_model_button.setToolTip(
+            "Select checkpoint file to load 3D model weights or state from"
+        )
 
         model_buttons_layout.addWidget(
             self.download_3d_model_button, 0, 0, 1, 1
@@ -451,8 +534,13 @@ class Widget(QMainWindow):
         button_row = QGridLayout()
 
         self.start_3d_training_button = QPushButton("Train")
+        self.start_3d_training_button.setToolTip("Start training 3D model")
         self.stop_3d_training_button = QPushButton("Stop")
+        self.stop_3d_training_button.setToolTip("Stop training 3D model")
         self.save_3d_weights_button = QPushButton("Save")
+        self.save_3d_weights_button.setToolTip(
+            "Save 3D state to checkpoint file"
+        )
         self.start_3d_training_button.setEnabled(False)
         self.stop_3d_training_button.setEnabled(False)
         self.save_3d_weights_button.setEnabled(False)
@@ -508,24 +596,36 @@ class Widget(QMainWindow):
     def set_grid_5(self):
 
         seg_heading = self.set_section_heading("Segmentation")
+        seg_heading.setToolTip("Step 4: Run the 2D → 3D pipeline.")
 
         self.seg_method_label = QLabel("Segmentation method:")
+        self.seg_method_label.setToolTip(
+            "Select the segmentation algorithm to use on output 3D affinities"
+        )
         self.seg_method_selector = QComboBox()
         self.seg_method_selector.addItems(
             [
-                #"watershed", 
-                "mutex watershed", 
-                "connected components"]
+                # "watershed",
+                "mutex watershed",
+                "connected components",
+            ]
         )
         self.seg_method_selector.setCurrentText("mutex watershed")
 
         self.advanced_seg_config_button = QPushButton(
-            "Advanced Segmentation Options"
+            "Advanced Segmentation Parameters"
+        )
+        self.advanced_seg_config_button.setToolTip(
+            "Configure parameters for the selected segmentation algorithm (changes apply on next run)"
         )
         self.advanced_seg_config_button.clicked.connect(self.open_seg_options)
 
         self.start_inference_button = QPushButton("Start")
+        self.start_inference_button.setToolTip(
+            "Run the complete pipeline: 2D model inference → 3D model inference → segmentation"
+        )
         self.stop_inference_button = QPushButton("Stop")
+        self.stop_inference_button.setEnabled(False)
 
         self.grid_5.addWidget(seg_heading, 0, 0, 1, 2)
 
@@ -659,6 +759,7 @@ class Widget(QMainWindow):
             num_workers=model_config["num_workers"],
             pin_memory=True,
             persistent_workers=True,
+            prefetch_factor=4,
         )
 
         # Load model and loss
@@ -728,7 +829,10 @@ class Widget(QMainWindow):
                 device=self.device,
                 dimension=dimension,
             )
-            if iteration % 1000 == 0:
+            if (
+                model_config["save_snapshots_every"] > 0
+                and iteration % model_config["save_snapshots_every"] == 0
+            ):
                 self.save_snapshot(
                     batch,
                     outputs,
@@ -792,7 +896,7 @@ class Widget(QMainWindow):
         self.seg_method_selector.setEnabled(True)
         self.advanced_seg_config_button.setEnabled(True)
         self.start_inference_button.setEnabled(True)
-        self.stop_inference_button.setEnabled(True)
+        self.stop_inference_button.setEnabled(False)
 
         # Handle the worker cleanup
         worker_attr = f"train_{dimension}_worker"
@@ -825,13 +929,6 @@ class Widget(QMainWindow):
             setattr(self, worker_attr, None)
 
     def prepare_for_start_inference(self):
-        self.start_2d_training_button.setEnabled(False)
-        self.stop_2d_training_button.setEnabled(False)
-        self.save_2d_weights_button.setEnabled(False)
-        self.start_3d_training_button.setEnabled(False)
-        self.stop_3d_training_button.setEnabled(False)
-        self.save_3d_weights_button.setEnabled(False)
-
         self.advanced_2d_config_button.setEnabled(False)
         self.advanced_3d_config_button.setEnabled(False)
 
@@ -855,6 +952,13 @@ class Widget(QMainWindow):
         self.advanced_seg_config_button.setEnabled(False)
         self.start_inference_button.setEnabled(False)
         self.stop_inference_button.setEnabled(True)
+
+        self.start_2d_training_button.setEnabled(False)
+        self.stop_2d_training_button.setEnabled(False)
+        self.save_2d_weights_button.setEnabled(False)
+        self.start_3d_training_button.setEnabled(False)
+        self.stop_3d_training_button.setEnabled(False)
+        self.save_3d_weights_button.setEnabled(False)
 
         self.inference_worker = self.infer()
         self.inference_worker.returned.connect(self.on_return_infer)
@@ -890,7 +994,7 @@ class Widget(QMainWindow):
         self.seg_method_selector.setEnabled(True)
         self.advanced_seg_config_button.setEnabled(True)
         self.start_inference_button.setEnabled(True)
-        self.stop_inference_button.setEnabled(True)
+        self.stop_inference_button.setEnabled(False)
 
         if self.inference_worker is not None:
             self.inference_worker.quit()
@@ -993,11 +1097,16 @@ class Widget(QMainWindow):
             if f"{layer}" == self.raw_selector.currentText():
                 raw_image_layer = layer
                 if len(raw_image_layer.data.shape) > 3:
-                    num_channels_2d = raw_image_layer.data.shape[-1 * self.channels_last] * input_shape_2d[0]
+                    num_channels_2d = (
+                        raw_image_layer.data.shape[-1 * self.channels_last]
+                        * input_shape_2d[0]
+                    )
                 elif len(raw_image_layer.data.shape) == 3:
                     num_channels_2d = input_shape_2d[0]
                 else:
-                    raise ValueError(f"Image layer must be 3D: {len(raw_image_layer.data.shape)}")
+                    raise ValueError(
+                        f"Image layer must be 3D: {len(raw_image_layer.data.shape)}"
+                    )
                 break
 
         if model_3d_type == "3d_affs_from_2d_lsd":
@@ -1111,6 +1220,10 @@ class Widget(QMainWindow):
                 assert all(
                     inp in outs_2d for inp in ins_3d
                 ), f"All 3D inputs {ins_3d} must be in 2D outputs {outs_2d}"
+
+                print(
+                    f"Running 2D model inference on {raw_image_layer.name} to get {outs_2d}..."
+                )
                 with gp.build(pipeline_1):
                     batch = pipeline_1.request_batch(request_1)
 
@@ -1141,6 +1254,9 @@ class Widget(QMainWindow):
             request_2 = gp.BatchRequest()
             request_2.add(pred_affs, roi.shape)
 
+            print(
+                f"Running 3D model inference on {ins_3d} to get {pred_affs}..."
+            )
             with gp.build(pipeline_2):
                 batch = pipeline_2.request_batch(request_2)
 
@@ -1266,7 +1382,9 @@ class Widget(QMainWindow):
         self.viewer.add_labels(
             mask.astype("uint8"), name=f"mask_{labels_name}"
         )
-        print(f"Made mask for {labels_name} and made new layer: mask_{labels_name}!")
+        print(
+            f"Made mask for {labels_name} and made new layer: mask_{labels_name}!"
+        )
 
     def open_parameter_dialog(self, title, params, param_filter=None):
         """
@@ -1452,7 +1570,8 @@ class Widget(QMainWindow):
         )
 
         if success:
-            print(f"Updated {dimension} model configuration: {config}")
+            print(f"Updated {dimension} model configuration:")
+            pprint(config)
 
     def open_seg_options(self):
         """
@@ -1468,7 +1587,7 @@ class Widget(QMainWindow):
         )
 
         if success:
-            print(f"Updated segmentation parameters for {method}: {params}")
+            print(f"Updated segmentation parameters for {method}")
 
     def load_weights(self, dimension):
         """
@@ -1480,6 +1599,9 @@ class Widget(QMainWindow):
 
         setattr(self, f"pretrained_{dimension}_model_checkpoint", file_name)
         self.remove_inference_attributes(dimension)
+
+        getattr(self, f"start_{dimension}_training_button").setEnabled(True)
+        getattr(self, f"save_{dimension}_weights_button").setEnabled(True)
 
         print(
             f" {dimension.upper()} Model weights will be loaded from {getattr(self, f'pretrained_{dimension}_model_checkpoint')}"
@@ -1598,8 +1720,6 @@ class Widget(QMainWindow):
 
         # Set the model attribute
         setattr(self, f"model_{dimension}", model.to(self.device))
-        getattr(self, f"start_{dimension}_training_button").setEnabled(True)
-        getattr(self, f"save_{dimension}_weights_button").setEnabled(True)
         print(
             f"Successfully loaded {dimension.upper()} model weights from {model_checkpoint}"
         )

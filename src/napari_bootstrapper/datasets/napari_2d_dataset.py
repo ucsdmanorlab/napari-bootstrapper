@@ -19,7 +19,7 @@ class Napari2DDataset(IterableDataset):
         model_type: str,
         lsd_sigma: int = 20,
         lsd_downsample: int = 4,
-        aff_neighborhood: list[list[int]] = [[-1, 0], [0, -1]],
+        aff_neighborhood: list[list[int]] | None = None,
         aff_grow_boundary: int = 1,
         channels_last: bool = False,
     ):
@@ -34,22 +34,30 @@ class Napari2DDataset(IterableDataset):
         self.voxel_size = 1, 1, 1
         self.offset = 0, 0, 0
 
+        self.aff_grow_boundary = aff_grow_boundary
+        if aff_neighborhood is None:
+            self.aff_neighborhood = [[0, *x] for x in [[-1, 0], [0, -1]]]
+        else:
+            self.aff_neighborhood = [[0, *x] for x in aff_neighborhood]
+
         self.lsd_sigma = (0, lsd_sigma, lsd_sigma)
         self.lsd_downsample = lsd_downsample
-        self.aff_neighborhood = [
-            [0, *x] for x in aff_neighborhood
-        ]
-        self.aff_grow_boundary = aff_grow_boundary
 
         self.voxel_size = gp.Coordinate(self.voxel_size)
         self.offset = gp.Coordinate(self.offset)
         shape = self.image_layer.data.shape
         context = (
-            calc_max_padding(self.output_shape, self.voxel_size, self.lsd_sigma)
+            calc_max_padding(
+                self.output_shape, self.voxel_size, self.lsd_sigma
+            )
             if self.model_type != "2d_affs"
-            else (gp.Coordinate(self.input_shape) - gp.Coordinate(self.output_shape)) // 2
+            else (
+                gp.Coordinate(self.input_shape)
+                - gp.Coordinate(self.output_shape)
+            )
+            // 2
         )
-        self.context = (0, context[1], context[2]) # ensure 2D padding
+        self.context = (0, context[1], context[2])  # ensure 2D padding
 
         # get unet num_channels from shape
         if len(shape) == 4:
@@ -152,7 +160,7 @@ class Napari2DDataset(IterableDataset):
             + gp.IntensityScaleShift(self.raw, 2, -1)
         )
 
-        if self.model_type == "2d_lsd":
+        if self.model_type == "2d_lsd" or self.model_type == "2d_mtlsd":
             self.pipeline += Add2DLSDs(
                 self.labels,
                 self.gt_lsds,
@@ -161,35 +169,13 @@ class Napari2DDataset(IterableDataset):
                 sigma=self.lsd_sigma,
                 downsample=self.lsd_downsample,
             )
-        elif self.model_type == "2d_affs":
+        elif self.model_type == "2d_affs" or self.model_type == "2d_mtlsd":
             self.pipeline += (
                 gp.GrowBoundary(
-                    self.labels, self.mask, steps=self.aff_grow_boundary, only_xy=True
-                )
-                + gp.AddAffinities(
-                    self.aff_neighborhood,
                     self.labels,
-                    self.gt_affs,
-                    unlabelled=self.mask,
-                    affinities_mask=self.gt_affs_mask,
-                    dtype=np.float32,
-                )
-                + gp.BalanceLabels(
-                    self.gt_affs, self.affs_weights, mask=self.gt_affs_mask
-                )
-            )
-        elif self.model_type == "2d_mtlsd":
-            self.pipeline += (
-                Add2DLSDs(
-                    self.labels,
-                    self.gt_lsds,
-                    unlabelled=self.mask,
-                    lsds_mask=self.lsds_weights,
-                    sigma=self.lsd_sigma,
-                    downsample=self.lsd_downsample,
-                )
-                + gp.GrowBoundary(
-                    self.labels, self.mask, steps=self.aff_grow_boundary, only_xy=True
+                    self.mask,
+                    steps=self.aff_grow_boundary,
+                    only_xy=True,
                 )
                 + gp.AddAffinities(
                     self.aff_neighborhood,
@@ -227,7 +213,7 @@ class Napari2DDataset(IterableDataset):
                 sample = self.pipeline.request_batch(request)
 
                 raw_data = sample[self.raw].data.copy()
-                
+
                 if self.model_type == "2d_lsd":
                     gt_lsds_data = sample[self.gt_lsds].data.copy()
                     lsds_weights_data = sample[self.lsds_weights].data.copy()
