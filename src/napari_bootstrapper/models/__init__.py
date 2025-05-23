@@ -12,6 +12,7 @@ PRETRAINED_3D_MODEL_URLS = {
 
 DEFAULT_2D_MODEL_CONFIG = {
     "batch_size": 8,
+    "learning_rate": 1e-4,
     "max_iterations": 5000,
     "num_workers": 8,
     "save_snapshots_every": 1000,
@@ -29,6 +30,7 @@ DEFAULT_2D_MODEL_CONFIG = {
 
 DEFAULT_3D_MODEL_CONFIG = {
     "batch_size": 1,
+    "learning_rate": 0.5e-4,
     "max_iterations": 10000,
     "num_workers": 8,
     "save_snapshots_every": 1000,

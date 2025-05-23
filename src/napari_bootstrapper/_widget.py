@@ -309,7 +309,7 @@ class Widget(QMainWindow):
                 self.mask_selector.addItem(f"{layer}")
 
         model_2d_type_label = QLabel(self)
-        model_2d_type_label.setText("Model task")
+        model_2d_type_label.setText("Task")
         model_2d_type_label.setToolTip(
             "Select the task (output) for 2D model: 2D affs (affinity maps), 2D lsd (local shape descriptors), or 2D mtlsd (multi-task: lsd and affs)"
         )
@@ -438,9 +438,9 @@ class Widget(QMainWindow):
         )
 
         model_3d_type_label = QLabel(self)
-        model_3d_type_label.setText("Model type")
+        model_3d_type_label.setText("Task")
         model_3d_type_label.setToolTip(
-            "Select the 2D input for 3D affinities model (only relevant when 2D model is 2D mtlsd, otherwise automatically inferred)"
+            "Select the 2D input for 3D affinities model (only relevant when 2D model task is 2D mtlsd, otherwise automatically inferred)"
         )
 
         self.model_3d_type_selector = QComboBox(self)
@@ -723,7 +723,6 @@ class Widget(QMainWindow):
             num_workers=model_config["num_workers"],
             pin_memory=True,
             persistent_workers=True,
-            prefetch_factor=4,
         )
 
         # Load model and loss
@@ -749,7 +748,7 @@ class Widget(QMainWindow):
             f"optimizer_{dimension}",
             torch.optim.Adam(
                 getattr(self, f"model_{dimension}").parameters(),
-                lr=1e-4,
+                lr=model_config["learning_rate"],
                 # weight_decay=0.01,
             ),
         )

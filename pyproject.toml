@@ -3,7 +3,7 @@ name = "napari-bootstrapper"
 dynamic = ["version"]
 description = "A plugin to quickly generate dense ground truth with sparse labels"
 readme = "README.md"
-license = {file = "LICENSE", text = "BSD-3"}
+license = {file = "LICENSE"}
 authors = [
   {name = "Vijay Venu Thiyagarajan"},
   {email = "vvenu@utexas.edu"},
