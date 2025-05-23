@@ -2,7 +2,7 @@ import math
 
 import torch
 import torch.nn as nn
-from funlib.learn.torch.models.conv4d import Conv4d
+
 
 class ConvPass(torch.nn.Module):
 
@@ -28,9 +28,7 @@ class ConvPass(torch.nn.Module):
 
             self.dims = len(kernel_size)
 
-            conv = {2: torch.nn.Conv2d, 3: torch.nn.Conv3d, 4: Conv4d}[
-                self.dims
-            ]
+            conv = {2: torch.nn.Conv2d, 3: torch.nn.Conv3d}[self.dims]
 
             if padding == "same":
                 pad = tuple(k // 2 for k in kernel_size)
@@ -428,7 +426,7 @@ class UNet(torch.nn.Module):
                         Upsample(
                             downsample_factors[level],
                             mode=(
-                                "bilinear"
+                                {2: "bilinear", 3: "trilinear"}[self.dims]
                                 if constant_upsample
                                 else "transposed_conv"
                             ),

@@ -1,7 +1,7 @@
 import torch
 
-from .unet_2d import ConvPass as ConvPass2D
-from .unet_2d import UNet as UNet2D
+from .unet import ConvPass as ConvPass2D
+from .unet import UNet as UNet2D
 
 
 class Model(torch.nn.Module):

@@ -1,7 +1,7 @@
 import torch
 
-from .unet_3d import ConvPass as ConvPass3D
-from .unet_3d import UNet as UNet3D
+from .unet import ConvPass as ConvPass3D
+from .unet import UNet as UNet3D
 
 
 class AffsUNet(torch.nn.Module):
@@ -9,7 +9,7 @@ class AffsUNet(torch.nn.Module):
     def __init__(
         self,
         in_channels,
-        num_fmaps=8,
+        num_fmaps=24,
         fmap_inc_factor=3,
         downsample_factors=((1, 2, 2), (1, 2, 2), (1, 2, 2)),
         kernel_size_down=(

@@ -36,9 +36,8 @@ dependencies = [
     "matplotlib",
     "napari",
     "tqdm",
-    "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch.git",
-    "lsds @ git+https://github.com/yajivunev/lsd.git",
-    "mwatershed @ git+https://github.com/pattonw/mwatershed.git",
+    "lsds",
+    "mwatershed",
 ]
 
 [project.optional-dependencies]
