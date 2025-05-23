@@ -37,6 +37,8 @@ from .gp.napari_image_source import NapariImageSource
 from .gp.np_source import NpArraySource
 from .gp.torch_predict import torchPredict
 from .models import (
+    DEFAULT_2D_MODEL_CONFIG,
+    DEFAULT_3D_MODEL_CONFIG,
     PRETRAINED_3D_MODEL_URLS,
     get_2d_model,
     get_3d_model,
@@ -325,22 +327,7 @@ class Widget(QMainWindow):
             lambda: self.open_model_options("2d")
         )
 
-        self.model_2d_config = {
-            "batch_size": 8,
-            "max_iterations": 5000,
-            "num_workers": 8,
-            "save_snapshots_every": 1000,
-            "net": {
-                "num_fmaps": 12,
-                "fmap_inc_factor": 5,
-            },
-            "task": {
-                "lsd_sigma": 20,
-                "lsd_downsample": 4,
-                "aff_neighborhood": [[-1, 0], [0, -1]],
-                "aff_grow_boundary": 1,
-            },
-        }
+        self.model_2d_config = DEFAULT_2D_MODEL_CONFIG
 
         self.grid_2.addWidget(data_heading, 0, 0, 1, 2)
 
@@ -473,30 +460,7 @@ class Widget(QMainWindow):
             lambda: self.open_model_options("3d")
         )
 
-        self.model_3d_config = {
-            "batch_size": 1,
-            "max_iterations": 10000,
-            "num_workers": 8,
-            "save_snapshots_every": 1000,
-            "net": {
-                "num_fmaps": 8,
-                "fmap_inc_factor": 3,
-            },
-            "task": {
-                "lsd_sigma": 20,
-                "lsd_downsample": 4,
-                "in_aff_neighborhood": [[-1, 0], [0, -1]],
-                "aff_grow_boundary": 1,
-                "aff_neighborhood": [
-                    [-1, 0, 0],
-                    [0, -1, 0],
-                    [0, 0, -1],
-                    [-2, 0, 0],
-                    [0, -8, 0],
-                    [0, 0, -8],
-                ],
-            },
-        }
+        self.model_3d_config = DEFAULT_3D_MODEL_CONFIG
 
         self.train_3d_model_from_scratch_checkbox = QCheckBox(
             "Train from scratch"
