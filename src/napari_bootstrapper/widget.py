@@ -8,6 +8,7 @@ from pathlib import Path
 from pprint import pprint
 
 import gunpowder as gp
+import numpy as np
 import pyqtgraph as pg
 import requests
 import torch
@@ -161,7 +162,7 @@ class Widget(QMainWindow):
         if count == 0:
             self.mask_selector.addItems([f"{event.value}"])
 
-    def show_hide_channels_last(self):
+    def show_hide_channels_dim(self):
         if self.raw_selector.currentText() == "":
             return
 
@@ -170,32 +171,38 @@ class Widget(QMainWindow):
 
         if len(raw_data.shape) == 3:
             # No channel dimension for 3D data (d,h,w)
-            self.channels_last = False
-            self.channels_last_checkbox.setEnabled(False)
-            self.channels_last_checkbox.hide()
-            self.channels_last_label.hide()
+            self.channels_dim = None
+            self.channels_dim_combo_box.setEnabled(False)
+            self.channels_dim_combo_box.hide()
+            self.channels_dim_label.hide()
 
         elif len(raw_data.shape) == 4:
-            self.channels_last_checkbox.setEnabled(True)
-            self.channels_last_checkbox.show()
-            self.channels_last_label.show()
+            self.channels_dim_combo_box.setEnabled(True)
+            self.channels_dim_combo_box.show()
+            self.channels_dim_label.show()
 
             if raw_layer.rgb:
                 # RGB layers in napari always have channels last
-                self.channels_last = True
-                self.channels_last_checkbox.setChecked(True)
-                self.channels_last_checkbox.setEnabled(False)
+                self.channels_dim = 3
+                self.channels_dim_combo_box.setCurrentText("3")
+                self.channels_dim_combo_box.setEnabled(False)
+            elif 1 in raw_data.shape:
+                self.channels_dim = raw_data.shape.index(1)
+                self.channels_dim_combo_box.setCurrentText(
+                    f"{self.channels_dim}"
+                )
+                self.channels_dim_combo_box.setEnabled(True)
             else:
-                self.update_channels_last()
+                self.update_channels_dim()
 
         else:
             raise ValueError(
                 f"Images must be 3D or 4D. Current image shape: {raw_data.shape}"
             )
 
-    def update_channels_last(self):
-        self.channels_last = self.channels_last_checkbox.isChecked()
-        print(f"channels_last: {self.channels_last}")
+    def update_channels_dim(self):
+        self.channels_dim = int(self.channels_dim_combo_box.currentText())
+        print(f"channels_dim: {self.channels_dim}")
 
     def update_3d_model_type_selector(self):
         self.model_3d_type_selector.clear()
@@ -262,25 +269,28 @@ class Widget(QMainWindow):
             if isinstance(layer, Image):
                 self.raw_selector.addItem(f"{layer}")
 
-        self.channels_last = False
-        self.channels_last_label = QLabel(self)
-        self.channels_last_label.setText("Channels last?")
-        self.channels_last_label.setToolTip(
-            "Specify whether the image data has channels as the last dimension (DHWC format) or not (CDHW format)"
+        self.channels_dim = None
+        self.channels_dim_label = QLabel(self)
+        self.channels_dim_label.setText("Channels dimension")
+        self.channels_dim_label.setToolTip(
+            "Specify the channels dimension of the image data since the image layer has 4 dimensions (for example, DHWC -> 3, CDHW -> 0)"
         )
-        self.channels_last_checkbox = QCheckBox(self)
-        self.channels_last_checkbox.setToolTip(
-            "Check this if your data has channel dimension at the end (DHWC format)"
-        )
-        self.channels_last_checkbox.setChecked(self.channels_last)
-        self.channels_last_label.hide()
-        self.channels_last_checkbox.hide()
+        self.channels_dim_combo_box = QComboBox(self)
+        self.channels_dim_combo_box.addItem("0")
+        self.channels_dim_combo_box.addItem("1")
+        self.channels_dim_combo_box.addItem("2")
+        self.channels_dim_combo_box.addItem("3")
+
+        self.channels_dim_combo_box.setCurrentText(f"{self.channels_dim}")
+        self.channels_dim_label.hide()
+        self.channels_dim_combo_box.hide()
+        self.show_hide_channels_dim()
 
         self.raw_selector.currentTextChanged.connect(
-            self.show_hide_channels_last
+            self.show_hide_channels_dim
         )
-        self.channels_last_checkbox.stateChanged.connect(
-            self.update_channels_last
+        self.channels_dim_combo_box.currentTextChanged.connect(
+            self.update_channels_dim
         )
 
         labels_label = QLabel(self)
@@ -334,8 +344,8 @@ class Widget(QMainWindow):
         self.grid_2.addWidget(raw_label, 1, 0, 1, 1)
         self.grid_2.addWidget(self.raw_selector, 1, 1, 1, 1)
 
-        self.grid_2.addWidget(self.channels_last_label, 2, 0, 1, 1)
-        self.grid_2.addWidget(self.channels_last_checkbox, 2, 1, 1, 1)
+        self.grid_2.addWidget(self.channels_dim_label, 2, 0, 1, 1)
+        self.grid_2.addWidget(self.channels_dim_combo_box, 2, 1, 1, 1)
 
         self.grid_2.addWidget(labels_label, 3, 0, 1, 1)
         self.grid_2.addWidget(self.labels_selector, 3, 1, 1, 1)
@@ -707,7 +717,7 @@ class Widget(QMainWindow):
                 labels_layer,
                 mask_layer,
                 model_type,
-                channels_last=self.channels_last,
+                channels_dim=self.channels_dim,
                 **model_config["task"],
             )
         elif dimension == "3d":
@@ -799,7 +809,7 @@ class Widget(QMainWindow):
                 self.save_snapshot(
                     batch,
                     outputs,
-                    f"/tmp/snapshots_{model_type}.zarr",
+                    self.tmp_dir / f"snapshots_{model_type}.zarr",
                     iteration,
                     dimension,
                 )
@@ -1061,7 +1071,7 @@ class Widget(QMainWindow):
                 raw_image_layer = layer
                 if len(raw_image_layer.data.shape) > 3:
                     num_channels_2d = (
-                        raw_image_layer.data.shape[-1 * self.channels_last]
+                        raw_image_layer.data.shape[self.channels_dim]
                         * input_shape_2d[0]
                     )
                 elif len(raw_image_layer.data.shape) == 3:
@@ -1109,10 +1119,9 @@ class Widget(QMainWindow):
 
         # set up pipeline
         if len(raw_image_layer.data.shape) == 4:
-            if self.channels_last:
-                roi = gp.Roi(offset, raw_image_layer.data.shape[:-1])
-            else:
-                roi = gp.Roi(offset, raw_image_layer.data.shape[1:])
+            total_shape = list(raw_image_layer.data.shape)
+            total_shape.pop(self.channels_dim)
+            roi = gp.Roi(offset, total_shape)
         else:
             roi = gp.Roi(offset, raw_image_layer.data.shape)
 
@@ -1159,7 +1168,7 @@ class Widget(QMainWindow):
                     dtype=raw_image_layer.data.dtype,
                     interpolatable=True,
                 ),
-                channels_last=self.channels_last,
+                channels_dim=self.channels_dim,
             )
             + gp.Normalize(raw)
             + gp.Pad(raw, None, "reflect")
@@ -1259,7 +1268,15 @@ class Widget(QMainWindow):
 
                 pred_layers.append(
                     (
-                        out_data[i : i + 1].copy(),
+                        (
+                            out_data[i : i + 1].copy()
+                            if self.channels_dim is None
+                            else np.moveaxis(
+                                out_data[i : i + 1].copy(),
+                                0,
+                                self.channels_dim,
+                            )
+                        ),
                         {
                             "name": component_name,
                             "colormap": component_color,
@@ -1286,7 +1303,15 @@ class Widget(QMainWindow):
 
             pred_layers.append(
                 (
-                    self.affs_3d[i : i + 1].copy(),
+                    (
+                        self.affs_3d[i : i + 1].copy()
+                        if self.channels_dim is None
+                        else np.moveaxis(
+                            self.affs_3d[i : i + 1].copy(),
+                            0,
+                            self.channels_dim,
+                        )
+                    ),
                     {
                         "name": component_name,
                         "colormap": component_color,
@@ -1306,7 +1331,15 @@ class Widget(QMainWindow):
         print("Inference complete!")
 
         return pred_layers + [
-            (self.segmentation, {"name": "segmentation"}, "labels")
+            (
+                (
+                    self.segmentation
+                    if self.channels_dim is None
+                    else np.expand_dims(self.segmentation, self.channels_dim)
+                ),
+                {"name": "segmentation"},
+                "labels",
+            )
         ]
 
     def on_return_infer(self, layers):
@@ -1331,15 +1364,7 @@ class Widget(QMainWindow):
                 labels_name = f"{layer}"
                 break
 
-        # make sure len(labels_data.shape) == 3
-        if len(labels_layer.data.shape) == 4:
-            labels_data = labels_layer.data.max(axis=0)
-        elif len(labels_layer.data.shape) == 3:
-            labels_data = labels_layer.data
-        else:
-            raise ValueError("Labels layer must be 3D")
-
-        mask = labels_data > 0
+        mask = labels_layer.data > 0
         if f"mask_{labels_name}" in self.viewer.layers:
             del self.viewer.layers[f"mask_{labels_name}"]
         self.viewer.add_labels(

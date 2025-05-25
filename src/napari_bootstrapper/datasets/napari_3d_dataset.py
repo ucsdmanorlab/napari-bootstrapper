@@ -13,20 +13,13 @@ from ..gp.smooth_augment import SmoothAugment
 
 class Napari3DDataset(IterableDataset):
     def __init__(
-        self, 
+        self,
         model_type: str,
         lsd_sigma: int = 20,
         lsd_downsample: int = 4,
-        in_aff_neighborhood: list[list[int]] = [[-1, 0], [0, -1]],
+        in_aff_neighborhood: list[list[int]] | None = None,
         aff_grow_boundary: int = 1,
-        aff_neighborhood: list[list[int]] = [
-            [-1, 0, 0], 
-            [0, -1, 0], 
-            [0, 0, -1],
-            [-2, 0, 0],
-            [0, -8, 0],
-            [0, 0, -8],
-        ],
+        aff_neighborhood: list[list[int]] | None = None,
     ):
         self.model_type = model_type
         self.input_shape = 20, 212, 212  # adjacent sections as extra channels
@@ -36,11 +29,24 @@ class Napari3DDataset(IterableDataset):
 
         self.lsd_sigma = lsd_sigma
         self.lsd_downsample = lsd_downsample
-        self.in_neighborhood = [
-            [0, *x] for x in in_aff_neighborhood
-        ]
+        self.in_neighborhood = (
+            [[0, *x] for x in [[-1, 0], [0, -1]]]
+            if in_aff_neighborhood is None
+            else [[0, *x] for x in in_aff_neighborhood]
+        )
         self.aff_grow_boundary = aff_grow_boundary
-        self.aff_neighborhood = aff_neighborhood
+        self.aff_neighborhood = (
+            [
+                [-1, 0, 0],
+                [0, -1, 0],
+                [0, 0, -1],
+                [-2, 0, 0],
+                [0, -8, 0],
+                [0, 0, -8],
+            ]
+            if aff_neighborhood is None
+            else aff_neighborhood
+        )
 
         self.voxel_size = gp.Coordinate(self.voxel_size)
         self.offset = gp.Coordinate(self.offset)
@@ -54,7 +60,7 @@ class Napari3DDataset(IterableDataset):
         elif model_type == "3d_affs_from_2d_lsd":
             self.num_channels = 6
         elif model_type == "3d_affs_from_2d_mtlsd":
-            self.num_channels = 6 + len(self.aff_neighborhood)
+            self.num_channels = 6 + len(self.in_neighborhood)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
 
@@ -86,7 +92,10 @@ class Napari3DDataset(IterableDataset):
             + gp.SimpleAugment(transpose_only=[1, 2])
         )
 
-        if self.model_type == "3d_affs_from_2d_lsd" or self.model_type == "3d_affs_from_2d_mtlsd":
+        if (
+            self.model_type == "3d_affs_from_2d_lsd"
+            or self.model_type == "3d_affs_from_2d_mtlsd"
+        ):
             self.pipeline += (
                 AddObfuscated2DLSDs(
                     self.labels,
@@ -113,7 +122,10 @@ class Napari3DDataset(IterableDataset):
                     axis=1,
                 )
             )
-        if self.model_type == "3d_affs_from_2d_affs" or self.model_type == "3d_affs_from_2d_mtlsd":
+        if (
+            self.model_type == "3d_affs_from_2d_affs"
+            or self.model_type == "3d_affs_from_2d_mtlsd"
+        ):
             self.pipeline += (
                 CustomGrowBoundary(self.labels, only_xy=True)
                 + gp.AddAffinities(
@@ -142,9 +154,11 @@ class Napari3DDataset(IterableDataset):
                     axis=1,
                 )
             )
-        
+
         self.pipeline += (
-            gp.GrowBoundary(self.labels, steps=self.aff_grow_boundary, only_xy=True)
+            gp.GrowBoundary(
+                self.labels, steps=self.aff_grow_boundary, only_xy=True
+            )
             + gp.AddAffinities(
                 affinity_neighborhood=self.aff_neighborhood,
                 labels=self.labels,

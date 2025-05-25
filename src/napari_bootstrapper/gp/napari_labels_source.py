@@ -1,5 +1,4 @@
 import gunpowder as gp
-import numpy as np
 from gunpowder.array_spec import ArraySpec
 from napari.layers import Labels
 
@@ -14,14 +13,21 @@ class NapariLabelsSource(gp.BatchProvider):
             The key to provide data into
     """
 
-    def __init__(self, labels: Labels, key: gp.ArrayKey, spec: ArraySpec):
+    def __init__(
+        self,
+        labels: Labels,
+        key: gp.ArrayKey,
+        spec: ArraySpec,
+        channels_dim: int | None = None,
+    ):
         self.array_spec = spec
+        self.channels_dim = channels_dim
 
         self.labels = gp.Array(
             data=(
-                labels.data 
-                if len(labels.data.shape) <= 3 
-                else labels.data.max(axis=0)
+                labels.data
+                if (self.channels_dim is None or len(labels.data.shape) == 3)
+                else labels.data.max(axis=self.channels_dim)
             ),
             spec=spec,
         )

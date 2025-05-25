@@ -14,15 +14,21 @@ class NapariImageSource(gp.BatchProvider):
             The key to provide data into
     """
 
-    def __init__(self, image: Image, key: gp.ArrayKey, spec: ArraySpec, channels_last: bool = False):
+    def __init__(
+        self,
+        image: Image,
+        key: gp.ArrayKey,
+        spec: ArraySpec,
+        channels_dim: int | None = None,
+    ):
         self.array_spec = spec
-        self.channels_last = channels_last
+        self.channels_dim = channels_dim
 
         self.image = gp.Array(
             data=(
-                image.data 
-                if not self.channels_last 
-                else np.moveaxis(image.data, -1, 0)
+                image.data
+                if self.channels_dim is None
+                else np.moveaxis(image.data, self.channels_dim, 0)
             ),
             spec=spec,
         )

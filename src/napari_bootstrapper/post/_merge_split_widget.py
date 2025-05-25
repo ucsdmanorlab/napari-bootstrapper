@@ -1,18 +1,17 @@
 ### taken from https://github.com/volume-em/empanada-napari/blob/main/empanada_napari/_merge_split_widget.py
 ### and https://github.com/volume-em/empanada-napari/blob/main/empanada/array_utils.py
 
-from napari_plugin_engine import napari_hook_implementation
-from magicgui import magicgui
-from skimage.measure import regionprops
-from scipy import ndimage as ndi
-from skimage.segmentation import watershed
-from skimage import morphology as morph
-from skimage.feature import peak_local_max
-from skimage.measure import label
-from skimage import draw
+import dask.array as da
 import napari
 import numpy as np
-import dask.array as da
+from magicgui import magicgui
+from napari_plugin_engine import napari_hook_implementation
+from scipy import ndimage as ndi
+from skimage import draw
+from skimage import morphology as morph
+from skimage.feature import peak_local_max
+from skimage.measure import label, regionprops
+from skimage.segmentation import watershed
 
 
 def take(array, indices, axis=0):
@@ -27,12 +26,12 @@ def take(array, indices, axis=0):
         output: np.ndarray
 
     """
-    indices = tuple([
-        slice(None) if n != axis else indices
-        for n in range(array.ndim)
-    ])
+    indices = tuple(
+        [slice(None) if n != axis else indices for n in range(array.ndim)]
+    )
 
     return array[indices]
+
 
 def put(array, indices, value, axis=0):
     r"""Put values at indices, inplace, along an axis.
@@ -43,13 +42,13 @@ def put(array, indices, value, axis=0):
         axis: Int. Axis to put along.
 
     """
-    indices = tuple([
-        slice(None) if n != axis else indices
-        for n in range(array.ndim)
-    ])
+    indices = tuple(
+        [slice(None) if n != axis else indices for n in range(array.ndim)]
+    )
 
     # modify the array inplace
     array[indices] = value
+
 
 def crop_and_binarize(mask, box, label):
     r"""Crop a mask from a bounding box and binarize the cropped mask
@@ -65,19 +64,25 @@ def crop_and_binarize(mask, box, label):
 
     """
     ndim = len(box) // 2
-    slices = tuple([slice(box[i], box[i+ndim]) for i in range(ndim)])
+    slices = tuple([slice(box[i], box[i + ndim]) for i in range(ndim)])
 
     return mask[slices] == label
 
+
 def map_points(world_points, labels_layer):
-    assert all(s == 1 for s in labels_layer.scale), "Labels layer must have scale of all ones!"
-    #assert all(t == 0 for t in labels_layer.translate), "Labels layer must have translation of (0, 0, 0)!"
+    assert all(
+        s == 1 for s in labels_layer.scale
+    ), "Labels layer must have scale of all ones!"
+    # assert all(t == 0 for t in labels_layer.translate), "Labels layer must have translation of (0, 0, 0)!"
 
     local_points = []
     for pt in world_points:
-        local_points.append(tuple([int(c) for c in labels_layer.world_to_data(pt)]))
-    
+        local_points.append(
+            tuple([int(c) for c in labels_layer.world_to_data(pt)])
+        )
+
     return local_points
+
 
 def get_local_points(labels_layer, label_ids):
     local_points = []
@@ -87,6 +92,7 @@ def get_local_points(labels_layer, label_ids):
             local_points.append(tuple([int(c) for c in world_points]))
 
     return local_points
+
 
 def _box_to_slice(shed_box):
     n = len(shed_box)
@@ -100,14 +106,15 @@ def _box_to_slice(shed_box):
 
     return tuple(slices)
 
+
 def morph_labels():
 
     ops = {
-        'Dilate': morph.binary_dilation,
-        'Erode': morph.binary_erosion,
-        'Close': morph.binary_closing,
-        'Open': morph.binary_opening,
-        'Fill holes': morph.remove_small_holes
+        "Dilate": morph.binary_dilation,
+        "Erode": morph.binary_erosion,
+        "Close": morph.binary_closing,
+        "Open": morph.binary_opening,
+        "Fill holes": morph.remove_small_holes,
     }
 
     def _pad_box(shed_box, shape, radius=0):
@@ -124,14 +131,36 @@ def morph_labels():
         return tuple(padded)
 
     @magicgui(
-        call_button='Apply',
-        layout='vertical',
-        operation=dict(widget_type='ComboBox', choices=list(ops.keys()), value=list(ops.keys())[0], label='Operation', tooltip='Morphological operation to apply'),
-        radius=dict(widget_type='Slider', label='Radius', min=1, max=7, value=1, tooltip='Radius of selem for morphology op.'),
-        hole_size=dict(widget_type='LineEdit', value='64', label='Hole size', tooltip='Max hole size to fill if op is fill hole'),
-        apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to apply the operation in 3D.')
+        call_button="Apply",
+        layout="vertical",
+        operation={
+            "widget_type": "ComboBox",
+            "choices": list(ops.keys()),
+            "value": list(ops.keys())[0],
+            "label": "Operation",
+            "tooltip": "Morphological operation to apply",
+        },
+        radius={
+            "widget_type": "Slider",
+            "label": "Radius",
+            "min": 1,
+            "max": 7,
+            "value": 1,
+            "tooltip": "Radius of selem for morphology op.",
+        },
+        hole_size={
+            "widget_type": "LineEdit",
+            "value": "64",
+            "label": "Hole size",
+            "tooltip": "Max hole size to fill if op is fill hole",
+        },
+        apply3d={
+            "widget_type": "CheckBox",
+            "text": "Apply in 3D",
+            "value": False,
+            "tooltip": "Check box to apply the operation in 3D.",
+        },
     )
-
     def widget(
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
@@ -139,12 +168,12 @@ def morph_labels():
         operation: int,
         radius: bool,
         hole_size: str,
-        apply3d: bool
+        apply3d: bool,
     ):
         hole_size = int(hole_size)
         labels = labels_layer.data
 
-        if operation == 'Fill holes':
+        if operation == "Fill holes":
             op_arg = hole_size
         elif labels.ndim == 3 and apply3d:
             op_arg = morph.ball(radius)
@@ -152,7 +181,7 @@ def morph_labels():
             op_arg = morph.disk(radius)
 
         if apply3d and labels.ndim != 3:
-            print('Apply 3D checked, but labels are not 3D. Ignoring.')
+            print("Apply 3D checked, but labels are not 3D. Ignoring.")
 
         if points_layer is None:
             label_ids = np.unique(labels)[1:].tolist()
@@ -164,8 +193,10 @@ def morph_labels():
             # get points as indices in local coordinates
             # local_points = map_points(world_points, labels_layer)
 
-            if type(labels) == da.core.Array:
-                raise Exception(f'Morph operations are not supported on Dask Array labels!')
+            if type(labels) is da.core.Array:
+                raise Exception(
+                    "Morph operations are not supported on Dask Array labels!"
+                )
             else:
                 label_ids = [labels[pt].item() for pt in local_points]
 
@@ -174,15 +205,19 @@ def morph_labels():
         label_ids = list(filter(lambda x: x > 0, label_ids))
 
         if len(label_ids) == 0:
-            print('No labels selected!')
+            print("No labels selected!")
             return
 
         for label_id in label_ids:
             if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
-                shed_box = [rp.bbox for rp in regionprops(labels) if rp.label == label_id][0]
+                shed_box = [
+                    rp.bbox
+                    for rp in regionprops(labels)
+                    if rp.label == label_id
+                ][0]
                 shed_box = _pad_box(shed_box, labels.shape, radius)
                 slices = _box_to_slice(shed_box)
-                
+
                 # apply op
                 binary = crop_and_binarize(labels, shed_box, label_id)
 
@@ -197,7 +232,11 @@ def morph_labels():
                     plane = viewer.dims.current_step[0]
                     labels2d = labels[plane]
 
-                    shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_ids]
+                    shed_box = [
+                        rp.bbox
+                        for rp in regionprops(labels2d)
+                        if rp.label == label_ids
+                    ]
                     shed_box = _pad_box(shed_box, labels.shape, radius)
                     slices = _box_to_slice(shed_box)
 
@@ -212,9 +251,15 @@ def morph_labels():
                     axis = viewer.dims.order[0]
                     plane = local_points[0][axis]
                     labels2d = take(labels, plane, axis)
-                    assert all(local_pt[axis] == plane for local_pt in local_points)
+                    assert all(
+                        local_pt[axis] == plane for local_pt in local_points
+                    )
 
-                    shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
+                    shed_box = [
+                        rp.bbox
+                        for rp in regionprops(labels2d)
+                        if rp.label == label_id
+                    ][0]
                     shed_box = _pad_box(shed_box, labels.shape, radius)
                     slices = _box_to_slice(shed_box)
 
@@ -227,25 +272,41 @@ def morph_labels():
 
             elif labels.ndim == 4:
                 # get the current viewer axes
-                assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
-                assert viewer.dims.order[1] == 1, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+                assert (
+                    viewer.dims.order[0] == 0
+                ), "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+                assert (
+                    viewer.dims.order[1] == 1
+                ), "Dims expected to be (0, 1, 2, 3) for 4D labels!"
                 if points_layer is not None:
                     plane1 = viewer.dims.current_step[0]
                     plane2 = viewer.dims.current_step[1]
                     labels = labels_layer.data
                     labels2d = labels[plane1, plane2]
 
-                    shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_ids]
+                    shed_box = [
+                        rp.bbox
+                        for rp in regionprops(labels2d)
+                        if rp.label == label_ids
+                    ]
                 else:
                     # get the current viewer axes
                     plane1 = local_points[0][0]
                     plane2 = local_points[0][1]
-                    assert all(local_pt[0] == plane1 for local_pt in local_points)
-                    assert all(local_pt[1] == plane2 for local_pt in local_points)
-            
+                    assert all(
+                        local_pt[0] == plane1 for local_pt in local_points
+                    )
+                    assert all(
+                        local_pt[1] == plane2 for local_pt in local_points
+                    )
+
                     labels2d = labels[plane1, plane2]
 
-                    shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
+                    shed_box = [
+                        rp.bbox
+                        for rp in regionprops(labels2d)
+                        if rp.label == label_id
+                    ][0]
 
                 shed_box = _pad_box(shed_box, labels.shape, radius)
                 slices = _box_to_slice(shed_box)
@@ -254,7 +315,7 @@ def morph_labels():
                 labels2d[slices][binary] = 0
                 binary = ops[operation](binary, op_arg)
                 labels2d[slices][binary] = label_id
-                    
+
                 labels[plane1, plane2] = labels2d
 
         labels_layer.data = labels
@@ -265,34 +326,40 @@ def morph_labels():
 
     return widget
 
+
 def delete_labels():
     @magicgui(
-        call_button='Delete labels',
-        layout='vertical',
-        apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to delete label in 3D.')
+        call_button="Delete labels",
+        layout="vertical",
+        apply3d={
+            "widget_type": "CheckBox",
+            "text": "Apply in 3D",
+            "value": False,
+            "tooltip": "Check box to delete label in 3D.",
+        },
     )
     def widget(
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
         points_layer: napari.layers.Points,
-        apply3d
+        apply3d,
     ):
         if points_layer is None:
             points_layer = viewer.add_points([])
-            points_layer.mode = 'ADD'
-            print('Add points!')
+            points_layer.mode = "ADD"
+            print("Add points!")
             return
 
         labels = labels_layer.data
         world_points = points_layer.data
 
         if apply3d and labels.ndim != 3:
-            print('Apply 3D checked, but labels are not 3D. Ignoring.')
+            print("Apply 3D checked, but labels are not 3D. Ignoring.")
 
         # get points as indices in local coordinates
         local_points = map_points(world_points, labels_layer)
 
-        if type(labels) == da.core.Array:
+        if type(labels) is da.core.Array:
             label_ids = [labels[pt].compute() for pt in local_points]
         else:
             label_ids = [labels[pt].item() for pt in local_points]
@@ -302,8 +369,8 @@ def delete_labels():
         label_ids = list(filter(lambda x: x > 0, label_ids))
 
         if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
-            for l in label_ids:
-                labels[labels == l] = 0
+            for l_ in label_ids:
+                labels[labels == l_] = 0
         elif labels.ndim == 3:
             # get the current viewer axis
             axis = viewer.dims.order[0]
@@ -311,41 +378,46 @@ def delete_labels():
             # take labels along axis
             for local_pt in local_points:
                 labels2d = take(labels, local_pt[axis], axis)
-                for l in label_ids:
-                    labels2d[labels2d == l] = 0
+                for l_ in label_ids:
+                    labels2d[labels2d == l_] = 0
 
                 put(labels, local_pt[axis], labels2d, axis)
         elif labels.ndim == 4:
             # get the current viewer axes
-            assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
-            assert viewer.dims.order[1] == 1, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+            assert (
+                viewer.dims.order[0] == 0
+            ), "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+            assert (
+                viewer.dims.order[1] == 1
+            ), "Dims expected to be (0, 1, 2, 3) for 4D labels!"
 
             # take labels along axis
             for local_pt in local_points:
                 labels2d = labels[local_pt[0], local_pt[1]]
-                for l in label_ids:
-                    labels2d[labels2d == l] = 0
+                for l_ in label_ids:
+                    labels2d[labels2d == l_] = 0
 
                 labels[local_pt[0], local_pt[1]] = labels2d
-            
+
         labels_layer.data = labels
         points_layer.data = []
 
-        print(f'Removed labels {label_ids}')
+        print(f"Removed labels {label_ids}")
 
     return widget
+
 
 def merge_labels():
 
     def _line_to_indices(line, axis):
         if len(line[0]) == 2:
-            line = line.ravel().astype('int').tolist()
+            line = line.ravel().astype("int").tolist()
             indices = np.stack(draw.line(*line), axis=1)
         elif len(line[0]) == 3:
             plane = line[0][axis]
             keep_axes = [i for i in range(3) if i != axis]
             line = line[:, keep_axes]
-            line = line.ravel().astype('int').tolist()
+            line = line.ravel().astype("int").tolist()
             y, x = draw.line(*line)
             # add plane to indices
             z = np.full_like(x, plane)
@@ -356,34 +428,38 @@ def merge_labels():
             assert axis == 0
             planes = line[0][:2]
             line = line[:, [2, 3]]
-            line = line.ravel().astype('int').tolist()
+            line = line.ravel().astype("int").tolist()
             y, x = draw.line(*line)
             # add plane to indices
             t = np.full_like(x, planes[0])
             z = np.full_like(x, planes[1])
             indices = np.stack([t, z, y, x], axis=1)
         else:
-            raise Exception('Only lines in 2d, 3d, and 4d are supported!')
+            raise Exception("Only lines in 2d, 3d, and 4d are supported!")
 
-        return indices 
+        return indices
 
     @magicgui(
-        call_button='Merge labels',
-        layout='vertical',
-        apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to merge label in 3D.')
+        call_button="Merge labels",
+        layout="vertical",
+        apply3d={
+            "widget_type": "CheckBox",
+            "text": "Apply in 3D",
+            "value": False,
+            "tooltip": "Check box to merge label in 3D.",
+        },
     )
-
     def widget(
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
-        points_layer: napari.layers.Points, 
-        shapes_layer: napari.layers.Shapes, 
-        apply3d
+        points_layer: napari.layers.Points,
+        shapes_layer: napari.layers.Shapes,
+        apply3d,
     ):
         if points_layer is None and shapes_layer is None:
             points_layer = viewer.add_points([])
-            points_layer.mode = 'ADD'
-            print('Add points!')
+            points_layer.mode = "ADD"
+            print("Add points!")
             return
 
         axis = viewer.dims.order[0]
@@ -393,33 +469,37 @@ def merge_labels():
             world_points.append(points_layer.data)
 
         if shapes_layer is not None:
-            for stype, shape in zip(shapes_layer.shape_type, shapes_layer.data):
-                if stype == 'line':
+            for stype, shape in zip(
+                shapes_layer.shape_type, shapes_layer.data, strict=False
+            ):
+                if stype == "line":
                     world_points.append(_line_to_indices(shape, axis))
-                elif stype == 'path':
+                elif stype == "path":
                     n = len(shape)  # number of vertices
                     for i in range(n):
-                        world_points.append(_line_to_indices(shape[i:i + 2], axis))
+                        world_points.append(
+                            _line_to_indices(shape[i : i + 2], axis)
+                        )
                         if i == n - 2:
                             break
 
         world_points = np.concatenate(world_points, axis=0)
 
         if apply3d and labels.ndim != 3:
-            print('Apply 3D checked, but labels are not 3D. Ignoring.')
+            print("Apply 3D checked, but labels are not 3D. Ignoring.")
 
         # get points as indices in local coordinates
         local_points = map_points(world_points, labels_layer)
 
         # clip local points outside of labels shape
-        for idx,pt in enumerate(local_points):
+        for idx, pt in enumerate(local_points):
             clipped_point = ()
-            for i,size in enumerate(labels.shape):
-                clipped_point += (min(size - 1, max(0, pt[i])), )
+            for i, size in enumerate(labels.shape):
+                clipped_point += (min(size - 1, max(0, pt[i])),)
 
             local_points[idx] = clipped_point
 
-        if type(labels) == da.core.Array:
+        if type(labels) is da.core.Array:
             label_ids = [labels[pt].compute() for pt in local_points]
         else:
             label_ids = [labels[pt].item() for pt in local_points]
@@ -438,30 +518,34 @@ def merge_labels():
 
         if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
             # replace labels with minimum of the selected labels
-            for l in label_ids:
-                if l != new_label_id:
-                    labels[labels == l] = new_label_id
+            for l_ in label_ids:
+                if l_ != new_label_id:
+                    labels[labels == l_] = new_label_id
         elif labels.ndim == 3:
             # take labels along axis
             for local_pt in local_points:
                 labels2d = take(labels, local_pt[axis], axis)
                 # replace labels with minimum of the selected labels
-                for l in label_ids:
-                    if l != new_label_id:
-                        labels2d[labels2d == l] = new_label_id
+                for l_ in label_ids:
+                    if l_ != new_label_id:
+                        labels2d[labels2d == l_] = new_label_id
 
                 put(labels, local_pt[axis], labels2d, axis)
         elif labels.ndim == 4:
             # get the current viewer axes
-            assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
-            assert viewer.dims.order[1] == 1, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+            assert (
+                viewer.dims.order[0] == 0
+            ), "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+            assert (
+                viewer.dims.order[1] == 1
+            ), "Dims expected to be (0, 1, 2, 3) for 4D labels!"
 
             # take labels along axis
             for local_pt in local_points:
                 labels2d = labels[local_pt[0], local_pt[1]]
-                for l in label_ids:
-                    if l != new_label_id:
-                        labels2d[labels2d == l] = new_label_id
+                for l_ in label_ids:
+                    if l_ != new_label_id:
+                        labels2d[labels2d == l_] = new_label_id
 
                 labels[local_pt[0], local_pt[1]] = labels2d
 
@@ -471,9 +555,10 @@ def merge_labels():
         if shapes_layer is not None:
             shapes_layer.data = []
 
-        print(f'Merged labels {label_ids} to {new_label_id}')
+        print(f"Merged labels {label_ids} to {new_label_id}")
 
     return widget
+
 
 def split_labels():
 
@@ -486,9 +571,10 @@ def split_labels():
         energy = -distance
 
         # handle irritating quirk of peak_local_max
-        # when any dimension is 1
-        if any([s == 1 for s in distance.shape]):
-            coords = peak_local_max(np.squeeze(distance), min_distance=min_distance)
+        if 1 in distance.shape:
+            coords = peak_local_max(
+                np.squeeze(distance), min_distance=min_distance
+            )
             markers = np.zeros(np.squeeze(distance).shape, dtype=bool)
             markers[tuple(coords.T)] = True
 
@@ -498,7 +584,7 @@ def split_labels():
             coords = peak_local_max(distance, min_distance=min_distance)
             markers = np.zeros(distance.shape, dtype=bool)
             markers[tuple(coords.T)] = True
-        
+
         markers, _ = ndi.label(markers)
         return energy, markers
 
@@ -512,16 +598,42 @@ def split_labels():
         return energy, markers
 
     @magicgui(
-        call_button='Split labels',
-        layout='vertical',
-        min_distance=dict(widget_type='Slider', label='Minimum Distance', min=1, max=100, value=10, tooltip='Min Distance between Markers'),
-        points_as_markers=dict(widget_type='CheckBox', text='Use points as markers', value=False, tooltip='Whether to use the placed points as markers for watershed. If checked, Min. Distance is ignored.'),
-        apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to split label in 3D.'),
-        # new_label_header=dict(widget_type='Label', label=f'<h3 text-align="center">Specify new label value (optional)</h3>'),
-        new_label=dict(widget_type='CheckBox', text='Specify new label IDs (optional)', value=False, tooltip='Whether to slect the new label IDs for the split labels'),
-        start_label=dict(widget_type='LineEdit', label='Start new label IDs from:', value='', tooltip='The label ID to start the new label IDs from.'),
+        call_button="Split labels",
+        layout="vertical",
+        min_distance={
+            "widget_type": "Slider",
+            "label": "Minimum Distance",
+            "min": 1,
+            "max": 100,
+            "value": 10,
+            "tooltip": "Min Distance between Markers",
+        },
+        points_as_markers={
+            "widget_type": "CheckBox",
+            "text": "Use points as markers",
+            "value": False,
+            "tooltip": "Whether to use the placed points as markers for watershed. If checked, Min. Distance is ignored.",
+        },
+        apply3d={
+            "widget_type": "CheckBox",
+            "text": "Apply in 3D",
+            "value": False,
+            "tooltip": "Check box to split label in 3D.",
+        },
+        # new_label_header={"widget_type": "Label", "label": "<h3 text-align=\"center\">Specify new label value (optional)</h3>"},
+        new_label={
+            "widget_type": "CheckBox",
+            "text": "Specify new label IDs (optional)",
+            "value": False,
+            "tooltip": "Whether to slect the new label IDs for the split labels",
+        },
+        start_label={
+            "widget_type": "LineEdit",
+            "label": "Start new label IDs from:",
+            "value": "",
+            "tooltip": "The label ID to start the new label IDs from.",
+        },
     )
-
     def widget(
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
@@ -529,27 +641,28 @@ def split_labels():
         min_distance: int,
         points_as_markers: bool,
         apply3d,
-
         # new_label_header,
         new_label: bool,
-        start_label: int
+        start_label: int,
     ):
         if points_layer is None:
             points_layer = viewer.add_points([])
-            points_layer.mode = 'ADD'
+            points_layer.mode = "ADD"
             return
 
         labels = labels_layer.data
         world_points = points_layer.data
 
         if apply3d and labels.ndim != 3:
-            print('Apply 3D checked, but labels are not 3D. Ignoring.')
+            print("Apply 3D checked, but labels are not 3D. Ignoring.")
 
         # get points as indices in local coordinates
         local_points = map_points(world_points, labels_layer)
 
-        if type(labels) == da.core.Array:
-            raise Exception(f'Split operation is not supported on Dask Array labels!')
+        if type(labels) is da.core.Array:
+            raise Exception(
+                "Split operation is not supported on Dask Array labels!"
+            )
 
         label_ids = np.array([labels[pt].item() for pt in local_points])
         local_points = np.stack(local_points, axis=0)
@@ -561,22 +674,28 @@ def split_labels():
         label_ids = label_ids[~background_pts]
 
         if len(label_ids) == 0:
-            print('No labels selected!')
+            print("No labels selected!")
             return
 
         # group local_points by label_ids
         labels_points = {
-            label_id: local_points[label_ids == label_id] 
+            label_id: local_points[label_ids == label_id]
             for label_id in np.unique(label_ids)
         }
 
         for label_id, local_points in labels_points.items():
             if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
-                shed_box = [rp.bbox for rp in regionprops(labels) if rp.label == label_id][0]
+                shed_box = [
+                    rp.bbox
+                    for rp in regionprops(labels)
+                    if rp.label == label_id
+                ][0]
                 binary = crop_and_binarize(labels, shed_box, label_id)
 
                 if points_as_markers:
-                    energy, markers = _point_markers(binary, local_points, shed_box)
+                    energy, markers = _point_markers(
+                        binary, local_points, shed_box
+                    )
                 else:
                     energy, markers = _distance_markers(binary, min_distance)
 
@@ -593,30 +712,46 @@ def split_labels():
                         max_label = labels.max()
 
                     # Check if any of the new label IDs are already in use
-                    new_labels_exist = any(labels.max() >= (marker_ids + max_label))
+                    new_labels_exist = any(
+                        labels.max() >= (marker_ids + max_label)
+                    )
                     if new_labels_exist:
-                        print(f'Label ID {start_label} is already in use. Please specify new label IDs.')
+                        print(
+                            f"Label ID {start_label} is already in use. Please specify new label IDs."
+                        )
                     else:
                         labels[slices][binary] = new_labels[binary] + max_label
-                        print(f'Split label {label_id} to {marker_ids + max_label}')
+                        print(
+                            f"Split label {label_id} to {marker_ids + max_label}"
+                        )
                 else:
-                    print('Nothing to split.')
+                    print("Nothing to split.")
 
             elif labels.ndim == 3:
                 # get the current viewer axis
                 axis = viewer.dims.order[0]
                 plane = local_points[0][axis]
                 labels2d = take(labels, plane, axis)
-                assert all(local_pt[axis] == plane for local_pt in local_points)
+                assert all(
+                    local_pt[axis] == plane for local_pt in local_points
+                )
 
-                shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
+                shed_box = [
+                    rp.bbox
+                    for rp in regionprops(labels2d)
+                    if rp.label == label_id
+                ][0]
                 binary = crop_and_binarize(labels2d, shed_box, label_id)
 
                 if points_as_markers:
                     local_points2d = []
                     for lp in local_points:
-                        local_points2d.append([p for i,p in enumerate(lp) if i != axis])
-                    energy, markers = _point_markers(binary, local_points2d, shed_box)
+                        local_points2d.append(
+                            [p for i, p in enumerate(lp) if i != axis]
+                        )
+                    energy, markers = _point_markers(
+                        binary, local_points2d, shed_box
+                    )
                 else:
                     energy, markers = _distance_markers(binary, min_distance)
 
@@ -632,33 +767,51 @@ def split_labels():
                     else:
                         max_label = labels2d.max()
                         # Check if any of the new label IDs are already in use
-                    new_labels_exist = any(labels2d.max() >= (marker_ids + max_label))
+                    new_labels_exist = any(
+                        labels2d.max() >= (marker_ids + max_label)
+                    )
                     if new_labels_exist:
-                        print(f'Label ID {start_label} is already in use. Please specify new label IDs.')
+                        print(
+                            f"Label ID {start_label} is already in use. Please specify new label IDs."
+                        )
                     else:
-                        labels2d[slices][binary] = new_labels[binary] + max_label
-                        print(f'Split label {label_id} to {marker_ids + max_label}')
+                        labels2d[slices][binary] = (
+                            new_labels[binary] + max_label
+                        )
+                        print(
+                            f"Split label {label_id} to {marker_ids + max_label}"
+                        )
                 else:
-                    print('Nothing to split.')
+                    print("Nothing to split.")
 
                 put(labels, local_points[0][axis], labels2d, axis)
 
             elif labels.ndim == 4:
                 # get the current viewer axes
-                assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
-                assert viewer.dims.order[1] == 1, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+                assert (
+                    viewer.dims.order[0] == 0
+                ), "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+                assert (
+                    viewer.dims.order[1] == 1
+                ), "Dims expected to be (0, 1, 2, 3) for 4D labels!"
                 plane1 = local_points[0][0]
                 plane2 = local_points[0][1]
                 assert all(local_pt[0] == plane1 for local_pt in local_points)
                 assert all(local_pt[1] == plane2 for local_pt in local_points)
-            
+
                 labels2d = labels[plane1, plane2]
 
-                shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
+                shed_box = [
+                    rp.bbox
+                    for rp in regionprops(labels2d)
+                    if rp.label == label_id
+                ][0]
                 binary = crop_and_binarize(labels2d, shed_box, label_id)
 
                 if points_as_markers:
-                    energy, markers = _point_markers(binary, local_points, shed_box)
+                    energy, markers = _point_markers(
+                        binary, local_points, shed_box
+                    )
                 else:
                     energy, markers = _distance_markers(binary, min_distance)
 
@@ -674,15 +827,23 @@ def split_labels():
                     else:
                         max_label = labels2d.max()
                     # Check if any of the new label IDs are already in use
-                    new_labels_exist = any(labels2d.max() >= (marker_ids + max_label))
+                    new_labels_exist = any(
+                        labels2d.max() >= (marker_ids + max_label)
+                    )
                     if new_labels_exist:
-                        print(f'Label ID {start_label} is already in use. Please specify new label IDs.')
+                        print(
+                            f"Label ID {start_label} is already in use. Please specify new label IDs."
+                        )
                     else:
-                        labels2d[slices][binary] = new_labels[binary] + max_label
-                        print(f'Split label {label_id} to {marker_ids + max_label}')
+                        labels2d[slices][binary] = (
+                            new_labels[binary] + max_label
+                        )
+                        print(
+                            f"Split label {label_id} to {marker_ids + max_label}"
+                        )
                 else:
-                    print('Nothing to split.')
-                    
+                    print("Nothing to split.")
+
                 labels[local_points[0][0], local_points[0][1]] = labels2d
 
         labels_layer.data = labels
@@ -690,14 +851,39 @@ def split_labels():
 
     return widget
 
+
 def filter_labels():
     @magicgui(
-        call_button='Apply Filter',
-        layout='vertical',
-        min_size=dict(widget_type='SpinBox', label='Minimum Size (voxels)', min=0, value=64, tooltip='Minimum size in voxels'),
-        sigma=dict(widget_type='FloatSpinBox', label='Sigma', min=0.0, value=0.0, step=0.1, tooltip='Outlier threshold in standard deviations'),
-        min_z_slices=dict(widget_type='SpinBox', label='Min Z Slices', min=0, value=4, tooltip='Minimum number of consecutive Z slices a label must exist in'),
-        relabel=dict(widget_type='CheckBox', text='Relabel after filtering', value=True, tooltip='Relabel connected components after filtering')
+        call_button="Apply Filter",
+        layout="vertical",
+        min_size={
+            "widget_type": "SpinBox",
+            "label": "Minimum Size (voxels)",
+            "min": 0,
+            "value": 64,
+            "tooltip": "Minimum size in voxels",
+        },
+        sigma={
+            "widget_type": "FloatSpinBox",
+            "label": "Sigma",
+            "min": 0.0,
+            "value": 0.0,
+            "step": 0.1,
+            "tooltip": "Outlier threshold in standard deviations",
+        },
+        min_z_slices={
+            "widget_type": "SpinBox",
+            "label": "Min Z Slices",
+            "min": 0,
+            "value": 4,
+            "tooltip": "Minimum number of consecutive Z slices a label must exist in",
+        },
+        relabel={
+            "widget_type": "CheckBox",
+            "text": "Relabel after filtering",
+            "value": True,
+            "tooltip": "Relabel connected components after filtering",
+        },
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -708,20 +894,30 @@ def filter_labels():
         relabel: bool,
     ):
         if labels_layer is None:
-            print('No labels layer selected!')
+            print("No labels layer selected!")
             return
 
         labels_array = labels_layer.data.copy()
-        
+
+        if len(labels_array.shape) > 3 and 1 in labels_array.shape:
+            channels_dim = labels_array.shape.index(1)
+            labels_array = np.squeeze(labels_array, axis=channels_dim)
+        elif len(labels_array.shape) == 3:
+            channels_dim = None
+        else:
+            raise ValueError(
+                "Labels array has more than 3 dimensions and num_channels > 1!"
+            )
+
         all_ids, id_counts = np.unique(labels_array, return_counts=True)
-        
+
         # Initialize filtered_ids with all non-zero IDs
         filtered_ids = all_ids[all_ids != 0]
-        
+
         if len(all_ids) == 0:
-            print('No labels to filter!')
+            print("No labels to filter!")
             return
-        
+
         if min_size > 0:
             # Filter by size
             filtered_ids = filtered_ids[id_counts[all_ids != 0] >= min_size]
@@ -731,18 +927,23 @@ def filter_labels():
             # Get mean and std of counts for surviving IDs
             surviving_counts = id_counts[np.isin(all_ids, filtered_ids)]
             mean, std = np.mean(surviving_counts), np.std(surviving_counts)
-            filtered_ids = filtered_ids[np.abs(surviving_counts - mean) <= sigma * std]
+            filtered_ids = filtered_ids[
+                np.abs(surviving_counts - mean) <= sigma * std
+            ]
             print(f"After outlier removal: {len(filtered_ids)} ids")
 
         if min_z_slices > 1:
             # Find unique IDs by z-slice
             unique_ids_by_slice = [
-                np.unique(labels_array[z]) for z in range(labels_array.shape[0])
+                np.unique(labels_array[z])
+                for z in range(labels_array.shape[0])
             ]
             # Find IDs that exist in at least N z-slices
             z_id_counts = np.array(
                 [
-                    np.sum([uid in slice_ids for slice_ids in unique_ids_by_slice])
+                    np.sum(
+                        [uid in slice_ids for slice_ids in unique_ids_by_slice]
+                    )
                     for uid in filtered_ids
                 ]
             )
@@ -751,39 +952,50 @@ def filter_labels():
 
         # IDs to remove
         ids_to_remove = np.setdiff1d(all_ids, filtered_ids)
-        
+
         # Remove filtered out labels
         if len(ids_to_remove) > 0:
             labels_array[np.isin(labels_array, ids_to_remove)] = 0
-            
+
             # Relabel connected components if requested
             if relabel:
-                labels_array = label(labels_array, connectivity=1).astype(labels_array.dtype)
+                labels_array = label(labels_array, connectivity=1).astype(
+                    labels_array.dtype
+                )
                 print("Re-labeled connected components")
-            
-            labels_layer.data = labels_array
+
+            labels_layer.data = (
+                np.expand_dims(labels_array, channels_dim)
+                if channels_dim is not None
+                else labels_array
+            )
             print(f"Removed {len(ids_to_remove)} label IDs")
         else:
             print("No labels were filtered out")
 
     return widget
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+
+@napari_hook_implementation(specname="napari_experimental_provide_dock_widget")
 def morph_labels_widget():
-    return morph_labels, {'name': 'Morph Labels'}
+    return morph_labels, {"name": "Morph Labels"}
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+
+@napari_hook_implementation(specname="napari_experimental_provide_dock_widget")
 def delete_labels_widget():
-    return delete_labels, {'name': 'Delete Labels'}
+    return delete_labels, {"name": "Delete Labels"}
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+
+@napari_hook_implementation(specname="napari_experimental_provide_dock_widget")
 def merge_labels_widget():
-    return merge_labels, {'name': 'Merge Labels'}
+    return merge_labels, {"name": "Merge Labels"}
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+
+@napari_hook_implementation(specname="napari_experimental_provide_dock_widget")
 def split_labels_widget():
-    return split_labels, {'name': 'Split Labels'}
+    return split_labels, {"name": "Split Labels"}
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+
+@napari_hook_implementation(specname="napari_experimental_provide_dock_widget")
 def filter_labels_widget():
-    return filter_labels, {'name': 'Filter Labels'}
+    return filter_labels, {"name": "Filter Labels"}

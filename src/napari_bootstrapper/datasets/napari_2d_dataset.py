@@ -21,13 +21,13 @@ class Napari2DDataset(IterableDataset):
         lsd_downsample: int = 4,
         aff_neighborhood: list[list[int]] | None = None,
         aff_grow_boundary: int = 1,
-        channels_last: bool = False,
+        channels_dim: int | None = None,
     ):
         self.model_type = model_type
         self.image_layer = image_layer
         self.labels_layer = labels_layer
         self.mask_layer = mask_layer
-        self.channels_last = channels_last
+        self.channels_dim = channels_dim
 
         self.input_shape = 3, 212, 212  # adjacent sections as extra channels
         self.output_shape = 1, 120, 120
@@ -61,18 +61,20 @@ class Napari2DDataset(IterableDataset):
 
         # get unet num_channels from shape
         if len(shape) == 4:
-            if not self.channels_last:
-                num_channels = shape[0]
-                self.shape = gp.Coordinate(shape[1:])
-            else:
-                num_channels = shape[-1]
-                self.shape = gp.Coordinate(shape[:-1])
+            if self.channels_dim is None:
+                raise AssertionError(
+                    "channels_dim must be specified for 4D arrays"
+                )
+            num_channels = shape[self.channels_dim]
+            self.shape = list(shape)
+            self.shape.pop(self.channels_dim)
         elif len(shape) == 3:
             num_channels = 1
-            self.shape = gp.Coordinate(shape)
+            self.shape = shape
         else:
             raise ValueError("Image must be 3D")
         self.num_channels = num_channels * self.input_shape[0]
+        self.shape = gp.Coordinate(self.shape)
 
         self.__setup_pipeline()
 
@@ -112,17 +114,19 @@ class Napari2DDataset(IterableDataset):
                     image=self.image_layer,
                     key=self.raw,
                     spec=raw_spec,
-                    channels_last=self.channels_last,
+                    channels_dim=self.channels_dim,
                 ),
                 NapariLabelsSource(
                     labels=self.labels_layer,
                     key=self.labels,
                     spec=labels_spec,
+                    channels_dim=self.channels_dim,
                 ),
                 NapariLabelsSource(
                     labels=self.mask_layer,
                     key=self.mask,
                     spec=mask_spec,
+                    channels_dim=self.channels_dim,
                 ),
             )
             + gp.MergeProvider()
@@ -169,7 +173,7 @@ class Napari2DDataset(IterableDataset):
                 sigma=self.lsd_sigma,
                 downsample=self.lsd_downsample,
             )
-        elif self.model_type == "2d_affs" or self.model_type == "2d_mtlsd":
+        if self.model_type == "2d_affs" or self.model_type == "2d_mtlsd":
             self.pipeline += (
                 gp.GrowBoundary(
                     self.labels,
@@ -189,8 +193,6 @@ class Napari2DDataset(IterableDataset):
                     self.gt_affs, self.affs_weights, mask=self.gt_affs_mask
                 )
             )
-        else:
-            raise ValueError(f"Unknown model type: {self.model_type}")
 
     def __iter__(self):
         return iter(self.__yield_sample())
