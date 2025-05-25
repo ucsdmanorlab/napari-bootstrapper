@@ -65,7 +65,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
-"napari_bootstrapper" = ["sample_data/*.npy"]
+"napari_bootstrapper" = ["sample_data/*.tif"]
 
 
 [tool.setuptools.dynamic]

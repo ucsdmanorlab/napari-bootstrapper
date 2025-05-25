@@ -8,7 +8,10 @@ contributions:
   commands:
     - id: napari-bootstrapper.make_cremi_sample_data
       python_name: napari_bootstrapper:make_cremi_sample_data
-      title: CREMI sample C
+      title: cremi_c
+    - id: napari-bootstrapper.make_fluo_c2dl_huh7_sample_data
+      python_name: napari_bootstrapper:make_fluo_c2dl_huh7_sample_data
+      title: fluo_c2dl_huh7
     - id: napari-bootstrapper.merge_labels
       title: Create Merge Labels
       python_name: napari_bootstrapper.post._merge_split_widget:merge_labels
@@ -29,8 +32,11 @@ contributions:
       title: Bootstrapper
   sample_data:
     - command: napari-bootstrapper.make_cremi_sample_data
-      display_name: CREMI sample C
+      display_name: cremi_c
       key: napari-bootstrapper-cremi
+    - command: napari-bootstrapper.make_fluo_c2dl_huh7_sample_data
+      display_name: fluo_c2dl_huh7
+      key: napari-bootstrapper-fluo_c2dl_huh7
   widgets:
     - command: napari-bootstrapper.Widget
       display_name: Bootstrapper
