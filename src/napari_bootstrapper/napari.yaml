@@ -6,9 +6,9 @@ visibility: public
 categories: ["Annotation", "Segmentation", "Dataset"]
 contributions:
   commands:
-    - id: napari-bootstrapper.make_sample_data
-      python_name: napari_bootstrapper._sample_data:make_sample_data
-      title: Load sample data
+    - id: napari-bootstrapper.make_cremi_sample_data
+      python_name: napari_bootstrapper:make_cremi_sample_data
+      title: CREMI sample C
     - id: napari-bootstrapper.merge_labels
       title: Create Merge Labels
       python_name: napari_bootstrapper.post._merge_split_widget:merge_labels
@@ -28,9 +28,9 @@ contributions:
       python_name: napari_bootstrapper:Widget
       title: Bootstrapper
   sample_data:
-    - command: napari-bootstrapper.make_sample_data
-      display_name: cremi_sample_c
-      key: cremi_sample_c
+    - command: napari-bootstrapper.make_cremi_sample_data
+      display_name: CREMI sample C
+      key: napari-bootstrapper-cremi
   widgets:
     - command: napari-bootstrapper.Widget
       display_name: Bootstrapper
