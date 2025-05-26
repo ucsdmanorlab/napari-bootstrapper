@@ -17,13 +17,20 @@ DEFAULT_2D_MODEL_CONFIG = {
     "num_workers": 8,
     "save_snapshots_every": 1000,
     "net": {
-        "num_fmaps": 12,
-        "fmap_inc_factor": 5,
+        "num_fmaps": 24,
+        "fmap_inc_factor": 3,
     },
     "task": {
         "lsd_sigma": 20,
         "lsd_downsample": 4,
-        "aff_neighborhood": [[-1, 0], [0, -1]],
+        "aff_neighborhood": [
+            [-1, 0],
+            [0, -1],
+            [-4, 0],
+            [0, -4],
+            [-8, 0],
+            [0, -8],
+        ],
         "aff_grow_boundary": 1,
     },
 }
@@ -35,13 +42,20 @@ DEFAULT_3D_MODEL_CONFIG = {
     "num_workers": 8,
     "save_snapshots_every": 1000,
     "net": {
-        "num_fmaps": 24,
+        "num_fmaps": 8,
         "fmap_inc_factor": 3,
     },
     "task": {
         "lsd_sigma": 20,
         "lsd_downsample": 4,
-        "in_aff_neighborhood": [[-1, 0], [0, -1]],
+        "in_aff_neighborhood": [
+            [-1, 0],
+            [0, -1],
+            [-4, 0],
+            [0, -4],
+            [-8, 0],
+            [0, -8],
+        ],
         "aff_grow_boundary": 1,
         "aff_neighborhood": [
             [-1, 0, 0],
@@ -112,15 +126,16 @@ def get_loss(model_type):
 def get_2d_model(
     model_type,
     num_channels,
-    stack_infer=True,
     num_fmaps=12,
     fmap_inc_factor=5,
+    **kwargs,
 ):
     return Model2D(
         in_channels=num_channels,
         num_fmaps=num_fmaps,
         fmap_inc_factor=fmap_inc_factor,
         model_type=model_type,
+        **kwargs,
     )
 
 
@@ -129,10 +144,12 @@ def get_3d_model(
     num_channels,
     num_fmaps=8,
     fmap_inc_factor=3,
+    **kwargs,
 ):
     return AffsUNet(
         in_channels=num_channels,
         num_fmaps=num_fmaps,
         fmap_inc_factor=fmap_inc_factor,
         model_type=model_type,
+        **kwargs,
     )

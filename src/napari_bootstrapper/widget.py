@@ -741,12 +741,14 @@ class Widget(QMainWindow):
                 num_channels=self.napari_dataset.num_channels,
                 model_type=model_type,
                 **model_config["net"],
+                **model_config["task"],
             )
         elif dimension == "3d":
             model = get_3d_model(
                 num_channels=self.napari_dataset.num_channels,
                 model_type=model_type,
                 **model_config["net"],
+                **model_config["task"],
             )
         self.device = torch.device(self.device_combo_box.currentText())
         setattr(self, f"model_{dimension}", model.to(self.device))
@@ -1020,6 +1022,7 @@ class Widget(QMainWindow):
                 model_type=model_type,
                 num_channels=num_channels,
                 **model_config["net"],
+                **model_config["task"],
             )
 
             # Store the model
@@ -1048,8 +1051,8 @@ class Widget(QMainWindow):
 
         voxel_size = 1, 1, 1
         offset = 0, 0, 0
-        input_shape_2d = 3, 212, 212
-        output_shape_2d = 1, 120, 120
+        input_shape_2d = 3, 332, 332
+        output_shape_2d = 1, 240, 240
         input_shape_3d = 20, 332, 332
         output_shape_3d = 4, 240, 240
 
@@ -1087,11 +1090,15 @@ class Widget(QMainWindow):
             num_channels_3d = 6
         elif model_3d_type == "3d_affs_from_2d_affs":
             ins_3d.append(int_affs)
-            num_channels_3d = 2
+            num_channels_3d = len(
+                self.model_3d_config["task"]["in_aff_neighborhood"]
+            )
         elif model_3d_type == "3d_affs_from_2d_mtlsd":
             ins_3d.append(int_lsds)
             ins_3d.append(int_affs)
-            num_channels_3d = 8
+            num_channels_3d = 6 + len(
+                self.model_3d_config["task"]["in_aff_neighborhood"]
+            )
         else:
             raise ValueError(f"Invalid 3D model type: {model_3d_type}")
 
@@ -1246,7 +1253,9 @@ class Widget(QMainWindow):
             num_channels = out_data.shape[0]
 
             if "affs" in out_name:
-                channel_names = [f"{out_name} (y)", f"{out_name} (x)"]
+                channel_names = [
+                    f"{out_name} {nb}" for nb in self.model_2d.aff_nbhd
+                ]
             elif "lsds" in out_name:
                 # For LSDs: offset(y), offset(x), covar(yy), covar(xx), corr(yx), size
                 channel_names = [
@@ -1286,15 +1295,8 @@ class Widget(QMainWindow):
                     )
                 )
 
-        # For 3D affs: (z, short), (y, short), (x, short), (z, long), (y, long), (x, long)
-        affs_3d_names = [
-            "3d affs (z,short)",
-            "3d affs (y,short)",
-            "3d affs (x,short)",
-            "3d affs (z,long)",
-            "3d affs (y,long)",
-            "3d affs (x,long)",
-        ]
+        # For 3D affs
+        affs_3d_names = [f"3d affs {nb}" for nb in self.model_3d.aff_nbhd]
 
         num_affs_3d = 6
         for i in range(num_affs_3d):

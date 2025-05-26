@@ -40,9 +40,6 @@ class ObfuscateAffs(gp.BatchFilter):
     def process(self, batch, request):
 
         affinities = batch[self.affinity_array].data
-        assert (
-            affinities.shape[0] == 2
-        ), "Expected 2 channels for 2D affinities"
 
         # Find boundary regions (where both channels are 0)
         boundary_mask = np.all(affinities == 0, axis=0)
@@ -89,10 +86,8 @@ class ObfuscateAffs(gp.BatchFilter):
                 : z_end - z_start, : y_end - y_start, : x_end - x_start
             ]
 
-            # Apply the blob to both channels
-            affinities[0, z_start:z_end, y_start:y_end, x_start:x_end][
-                blob_slice
-            ] = 1
-            affinities[1, z_start:z_end, y_start:y_end, x_start:x_end][
-                blob_slice
-            ] = 1
+            # Apply the blob to all channels
+            for c in range(affinities.shape[0]):
+                affinities[c, z_start:z_end, y_start:y_end, x_start:x_end][
+                    blob_slice
+                ] = 1

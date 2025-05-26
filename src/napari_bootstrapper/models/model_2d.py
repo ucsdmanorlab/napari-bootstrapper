@@ -14,12 +14,14 @@ class Model(torch.nn.Module):
         fmap_inc_factor=5,
         downsample_factors=((2, 2), (2, 2), (2, 2)),
         model_type="2d_mtlsd",
+        **kwargs,
     ):
 
         super().__init__()
 
         self.stack_infer = stack_infer
         self.model_type = model_type
+        self.aff_nbhd = kwargs.get("aff_neighborhood", [[-1, 0], [0, -1]])
 
         num_levels = len(downsample_factors)
         ksd = (((3, 3), (3, 3)),) * (num_levels + 1)
@@ -47,7 +49,7 @@ class Model(torch.nn.Module):
 
         if self.has_aff:
             self.aff_head = ConvPass2D(
-                num_fmaps, 2, [[1, 1]], activation="Sigmoid"
+                num_fmaps, len(self.aff_nbhd), [[1, 1]], activation="Sigmoid"
             )
 
     def forward(self, x):

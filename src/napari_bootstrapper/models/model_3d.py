@@ -24,20 +24,37 @@ class AffsUNet(torch.nn.Module):
             ((1, 3, 3), (1, 3, 3)),
         ),
         model_type="3d_affs_from_2d_mtlsd",
+        **kwargs,
     ):
 
         super().__init__()
 
         self.model_type = model_type
+        self.in_aff_nbhd = kwargs.get("in_aff_neighborhood")
+        self.aff_nbhd = kwargs.get(
+            "aff_neighborhood",
+            [
+                [-1, 0, 0],
+                [0, -1, 0],
+                [0, 0, -1],
+                [-2, 0, 0],
+                [0, -8, 0],
+                [0, 0, -8],
+            ],
+        )
 
         if model_type == "3d_affs_from_2d_mtlsd":
-            assert in_channels == 8, "in_channels must be 8=(6+2) for 2d_mtlsd"
+            assert in_channels == 6 + len(
+                self.in_aff_nbhd
+            ), "in_channels must be 8=(6+len(in_aff_neighborhood)) for 2d_mtlsd"
             self.process_inputs = lambda *inputs: torch.cat(inputs, dim=1)
         elif model_type == "3d_affs_from_2d_lsd":
             assert in_channels == 6, "in_channels must be 6 for 2d_lsd"
             self.process_inputs = lambda *inputs: inputs[0]
         elif model_type == "3d_affs_from_2d_affs":
-            assert in_channels == 2, "in_channels must be 2 for 2d_affs"
+            assert in_channels == len(
+                self.in_aff_nbhd
+            ), "in_channels must be len(aff_neighborhood) for 2d_affs"
             self.process_inputs = lambda *inputs: inputs[0]
         else:
             raise ValueError("Invalid model_type")
@@ -54,7 +71,7 @@ class AffsUNet(torch.nn.Module):
         )
 
         self.affs_head = ConvPass3D(
-            num_fmaps, 6, [[1, 1, 1]], activation="Sigmoid"
+            num_fmaps, len(self.aff_nbhd), [[1, 1, 1]], activation="Sigmoid"
         )
 
     def forward(self, *inputs):
