@@ -664,7 +664,11 @@ class Widget(QMainWindow):
         worker = self.train(dimension)
         setattr(self, f"train_{dimension}_worker", worker)
 
-        worker.yielded.connect(getattr(self, f"on_yield_{dimension}_training"))
+        worker.yielded.connect(
+            lambda data: self.on_yield_training(
+                dimension=dimension, plot_data=data
+            )
+        )
         worker.returned.connect(
             lambda: self.prepare_for_stop_training(dimension)
         )
@@ -794,6 +798,7 @@ class Widget(QMainWindow):
                 ),
                 train_dataloader,
                 strict=False,
+                initial=getattr(self, f"start_iteration_{dimension}"),
             )
         ):
             loss, outputs = train_iteration(
@@ -815,29 +820,24 @@ class Widget(QMainWindow):
                     iteration,
                     dimension,
                 )
-            yield loss, iteration
+
+            getattr(self, f"losses_{dimension}").append(loss)
+            getattr(self, f"iterations_{dimension}").append(iteration)
+
+            if iteration % 10 == 0:
+                yield getattr(self, f"losses_{dimension}"), getattr(
+                    self, f"iterations_{dimension}"
+                )
         print(f"{dimension.upper()} Training finished!")
         return
 
-    def on_yield_2d_training(self, loss_iteration):
+    def on_yield_training(self, dimension, plot_data):
         """
-        The loss plot is updated every training iteration.
+        The loss plot is updated every training N iterations.
         """
-        loss, iteration = loss_iteration
-        print(f"===> Iteration: {iteration}, loss: {loss:.6f}")
-        self.iterations_2d.append(iteration)
-        self.losses_2d.append(loss)
-        self.losses_2d_widget.plot(self.iterations_2d, self.losses_2d)
-
-    def on_yield_3d_training(self, loss_iteration):
-        """
-        The loss plot is updated every training iteration.
-        """
-        loss, iteration = loss_iteration
-        print(f"===> Iteration: {iteration}, loss: {loss:.6f}")
-        self.iterations_3d.append(iteration)
-        self.losses_3d.append(loss)
-        self.losses_3d_widget.plot(self.iterations_3d, self.losses_3d)
+        getattr(self, f"losses_{dimension}_widget").plot(
+            plot_data[1], plot_data[0]
+        )
 
     def prepare_for_stop_training(self, dimension):
         # Re-enable all training buttons and save buttons
