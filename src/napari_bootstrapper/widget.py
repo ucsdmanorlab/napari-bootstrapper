@@ -679,12 +679,9 @@ class Widget(QMainWindow):
         """
         When training is initiated or new model is loaded, then existing predictions are removed.
         """
-        if hasattr(self, f"affs_{dimension}"):
-            delattr(self, f"affs_{dimension}")
-        if hasattr(self, f"lsds_{dimension}"):
-            delattr(self, f"lsds_{dimension}")
-        if hasattr(self, "segmentation"):
-            delattr(self, "segmentation")
+        for attr in [f"affs_{dimension}", f"lsds_{dimension}", "segmentation"]:
+            if hasattr(self, attr):
+                delattr(self, attr)
 
     @thread_worker
     def train(self, dimension):
@@ -1226,7 +1223,7 @@ class Widget(QMainWindow):
         if hasattr(self, "affs_3d"):
             pass
         else:
-            if all(hasattr(self, str(attr).lower()) for attr in ins_3d):
+            if all(hasattr(self, str(attr).lower()) for attr in outs_2d):
                 pass
             else:
                 assert all(

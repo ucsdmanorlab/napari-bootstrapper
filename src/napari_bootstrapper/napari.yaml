@@ -28,7 +28,7 @@ contributions:
       title: Create Filter Labels
       python_name: napari_bootstrapper.post._merge_split_widget:filter_labels
     - id: napari-bootstrapper.Widget
-      python_name: napari_bootstrapper:Widget
+      python_name: napari_bootstrapper.widget:Widget
       title: Bootstrapper
   sample_data:
     - command: napari-bootstrapper.make_cremi_sample_data
