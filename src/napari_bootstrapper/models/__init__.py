@@ -19,6 +19,9 @@ DEFAULT_2D_MODEL_CONFIG = {
     "net": {
         "num_fmaps": 24,
         "fmap_inc_factor": 3,
+        "input_shape": [3, 212, 212],
+        "output_shape": [1, 120, 120],
+        "shape_increase": [0, 120, 120],
     },
     "task": {
         "lsd_sigma": 20,
@@ -44,6 +47,9 @@ DEFAULT_3D_MODEL_CONFIG = {
     "net": {
         "num_fmaps": 8,
         "fmap_inc_factor": 3,
+        "input_shape": [20, 212, 212],
+        "output_shape": [4, 120, 120],
+        "shape_increase": [0, 120, 120],
     },
     "task": {
         "lsd_sigma": 20,

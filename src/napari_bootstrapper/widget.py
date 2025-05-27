@@ -76,7 +76,7 @@ def train_iteration(batch, model, criterion, optimizer, device, dimension):
     else:
         if len(batch) == 3:
             loss = criterion(outputs, batch[1], batch[2])
-        elif len(batch) == 4:
+        elif len(batch) == 4:  # multiple inputs
             loss = criterion(outputs, batch[2], batch[3])
         else:
             raise ValueError("Invalid batch size")
@@ -722,11 +722,16 @@ class Widget(QMainWindow):
                 mask_layer,
                 model_type,
                 channels_dim=self.channels_dim,
+                input_shape=model_config["net"]["input_shape"],
+                output_shape=model_config["net"]["output_shape"],
                 **model_config["task"],
             )
         elif dimension == "3d":
             self.napari_dataset = Napari3DDataset(
-                model_type, **model_config["task"]
+                model_type,
+                input_shape=model_config["net"]["input_shape"],
+                output_shape=model_config["net"]["output_shape"],
+                **model_config["task"],
             )
 
         # Create dataloader
@@ -798,8 +803,8 @@ class Widget(QMainWindow):
                 ),
                 train_dataloader,
                 strict=False,
-                initial=getattr(self, f"start_iteration_{dimension}"),
-            )
+            ),
+            initial=getattr(self, f"start_iteration_{dimension}"),
         ):
             loss, outputs = train_iteration(
                 batch,
@@ -1051,10 +1056,38 @@ class Widget(QMainWindow):
 
         voxel_size = 1, 1, 1
         offset = 0, 0, 0
-        input_shape_2d = 3, 332, 332
-        output_shape_2d = 1, 240, 240
-        input_shape_3d = 20, 332, 332
-        output_shape_3d = 4, 240, 240
+        input_shape_2d = [
+            sum(x)
+            for x in zip(
+                self.model_2d_config["net"]["input_shape"],
+                self.model_2d_config["net"]["shape_increase"],
+                strict=False,
+            )
+        ]
+        output_shape_2d = [
+            sum(x)
+            for x in zip(
+                self.model_2d_config["net"]["output_shape"],
+                self.model_2d_config["net"]["shape_increase"],
+                strict=False,
+            )
+        ]
+        input_shape_3d = [
+            sum(x)
+            for x in zip(
+                self.model_3d_config["net"]["input_shape"],
+                self.model_3d_config["net"]["shape_increase"],
+                strict=False,
+            )
+        ]
+        output_shape_3d = [
+            sum(x)
+            for x in zip(
+                self.model_3d_config["net"]["output_shape"],
+                self.model_3d_config["net"]["shape_increase"],
+                strict=False,
+            )
+        ]
 
         outs_2d = []
         ins_3d = []
@@ -1535,7 +1568,9 @@ class Widget(QMainWindow):
             # For nested parameters, check based on model type
             # Network parameters are always included
             if param_name.startswith("net."):
-                return True
+                task_param = param_name.split(".")[1]
+                if "shape" not in task_param:
+                    return True
 
             # Task-specific parameters
             if param_name.startswith("task."):
@@ -1793,11 +1828,14 @@ class Widget(QMainWindow):
         import zarr
 
         # Save the batch and outputs to a Zarr array
-        print(f"Saving snapshot to {path}")
+        print(f"Saving snapshot to {path}/{iteration}")
         f = zarr.open(path, mode="a")
 
         is_2d = dimension == "2d"
         offset = (8, 46, 46) if not is_2d else (0, 46, 46)
+
+        model_type = getattr(self, f"model_{dimension}").model_type
+        num_inputs = 2 if model_type == "3d_affs_from_2d_mtlsd" else 1
 
         def process_and_save_array(arr, iteration, name, idx, is_input=False):
             array = arr.detach().cpu().numpy()
@@ -1825,7 +1863,9 @@ class Widget(QMainWindow):
 
         # Process batch arrays
         for i, arr in enumerate(batch):
-            process_and_save_array(arr, iteration, "arr", i, is_input=True)
+            process_and_save_array(
+                arr, iteration, "arr", i, is_input=i < num_inputs
+            )
 
         # Process output arrays
         for i, arr in enumerate(outputs):

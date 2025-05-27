@@ -17,6 +17,8 @@ class Napari2DDataset(IterableDataset):
         labels_layer: Labels,
         mask_layer: Labels,
         model_type: str,
+        input_shape: list[int],
+        output_shape: list[int],
         lsd_sigma: int = 20,
         lsd_downsample: int = 4,
         aff_neighborhood: list[list[int]] | None = None,
@@ -29,8 +31,8 @@ class Napari2DDataset(IterableDataset):
         self.mask_layer = mask_layer
         self.channels_dim = channels_dim
 
-        self.input_shape = 3, 212, 212  # adjacent sections as extra channels
-        self.output_shape = 1, 120, 120
+        self.input_shape = input_shape
+        self.output_shape = output_shape
         self.voxel_size = 1, 1, 1
         self.offset = 0, 0, 0
 
