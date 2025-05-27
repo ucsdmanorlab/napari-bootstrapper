@@ -5,7 +5,6 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 import re
 import zipfile
 from pathlib import Path
-from pprint import pprint
 
 import gunpowder as gp
 import numpy as np
@@ -679,7 +678,11 @@ class Widget(QMainWindow):
         """
         When training is initiated or new model is loaded, then existing predictions are removed.
         """
-        for attr in [f"affs_{dimension}", f"lsds_{dimension}", "segmentation"]:
+        for attr in [f"affs_{dimension}", f"lsds_{dimension}"]:
+            if hasattr(self, attr):
+                delattr(self, attr)
+
+        for attr in ["affs_3d", "segmentation"]:
             if hasattr(self, attr):
                 delattr(self, attr)
 
@@ -1223,7 +1226,7 @@ class Widget(QMainWindow):
         if hasattr(self, "affs_3d"):
             pass
         else:
-            if all(hasattr(self, str(attr).lower()) for attr in outs_2d):
+            if all(hasattr(self, str(attr).lower()) for attr in ins_3d):
                 pass
             else:
                 assert all(
@@ -1271,10 +1274,9 @@ class Widget(QMainWindow):
 
             self.affs_3d = batch[pred_affs].data
 
-        colormaps = ["red", "green", "blue"]
-
         # create napari layers for returning
         pred_layers = []
+        colormaps = ["red", "green", "blue"]
 
         # Add individual layers for each 2D output
         for out in outs_2d:
@@ -1593,7 +1595,6 @@ class Widget(QMainWindow):
 
         if success:
             print(f"Updated {dimension} model configuration:")
-            pprint(config)
 
     def open_seg_options(self):
         """
