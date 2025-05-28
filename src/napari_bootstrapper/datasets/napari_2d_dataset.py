@@ -170,30 +170,28 @@ class Napari2DDataset(IterableDataset):
             self.pipeline += Add2DLSDs(
                 self.labels,
                 self.gt_lsds,
-                unlabelled=self.mask,
+                labels_mask=self.mask,
                 lsds_mask=self.lsds_weights,
                 sigma=self.lsd_sigma,
                 downsample=self.lsd_downsample,
             )
         if self.model_type == "2d_affs" or self.model_type == "2d_mtlsd":
-            self.pipeline += (
-                gp.GrowBoundary(
+            if self.aff_grow_boundary > 0:
+                self.pipeline += gp.GrowBoundary(
                     self.labels,
                     self.mask,
                     steps=self.aff_grow_boundary,
                     only_xy=True,
                 )
-                + gp.AddAffinities(
-                    self.aff_neighborhood,
-                    self.labels,
-                    self.gt_affs,
-                    unlabelled=self.mask,
-                    affinities_mask=self.gt_affs_mask,
-                    dtype=np.float32,
-                )
-                + gp.BalanceLabels(
-                    self.gt_affs, self.affs_weights, mask=self.gt_affs_mask
-                )
+            self.pipeline += gp.AddAffinities(
+                self.aff_neighborhood,
+                self.labels,
+                self.gt_affs,
+                unlabelled=self.mask,
+                affinities_mask=self.gt_affs_mask,
+                dtype=np.float32,
+            ) + gp.BalanceLabels(
+                self.gt_affs, self.affs_weights, mask=self.gt_affs_mask
             )
 
     def __iter__(self):
