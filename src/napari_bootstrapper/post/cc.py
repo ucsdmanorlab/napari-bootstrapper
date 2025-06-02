@@ -5,17 +5,13 @@ from scipy.ndimage import gaussian_filter
 
 
 def cc_from_affinities(
-        affs: np.ndarray,
-        threshold: float = 0.5,
-        sigma: tuple[int, int, int] | None = None,
-        noise_eps: float | None = None,
-        bias: float | list[float] | None = None,
+    affs: np.ndarray,
+    threshold: float = 0.5,
+    sigma: tuple[int, int, int] | None = None,
+    noise_eps: float | None = None,
+    bias: float | list[float] | None = None,
 ) -> np.ndarray:
-    if sigma is not None:
-        # add 0 for channel dim
-        sigma = (0, *sigma)
-    else:
-        sigma = None
+    sigma = (0, *sigma) if sigma is not None else None
 
     shift = np.zeros_like(affs)
 
@@ -26,11 +22,13 @@ def cc_from_affinities(
         shift += gaussian_filter(affs, sigma=sigma) - affs
 
     if bias is not None:
-        if type(bias) == float:
+        if bias is float:
             bias = [bias] * affs.shape[0]
         else:
             assert len(bias) == affs.shape[0]
-        shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
+        shift += np.array([bias]).reshape(
+            (-1, *((1,) * (len(affs.shape) - 1)))
+        )
 
     hard_aff = (affs + shift) > threshold
 
@@ -38,7 +36,9 @@ def cc_from_affinities(
 
 
 @jit(nopython=True)
-def compute_connected_component_segmentation(hard_aff: np.ndarray) -> np.ndarray:
+def compute_connected_component_segmentation(
+    hard_aff: np.ndarray,
+) -> np.ndarray:
     """
     Compute connected components from affinities.
 
@@ -54,7 +54,9 @@ def compute_connected_component_segmentation(hard_aff: np.ndarray) -> np.ndarray
     for i in range(visited.shape[0]):
         for j in range(visited.shape[1]):
             for k in range(visited.shape[2]):
-                if hard_aff[:, i, j, k].any() and not visited[i, j, k]:  # If foreground
+                if (
+                    hard_aff[:, i, j, k].any() and not visited[i, j, k]
+                ):  # If foreground
                     cur_to_visit = [(i, j, k)]
                     visited[i, j, k] = True
                     while cur_to_visit:

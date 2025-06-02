@@ -1,12 +1,12 @@
 import numpy as np
+import waterz
 from scipy.ndimage import (
     distance_transform_edt,
+    gaussian_filter,
     label,
     maximum_filter,
-    gaussian_filter,
 )
 from skimage.segmentation import watershed as skimage_watershed
-import waterz
 
 
 def watershed_from_boundary_distance(
@@ -59,11 +59,7 @@ def watershed_from_affinities(
         or
         (fragments, max_id, seeds) if return_seeds == True"""
 
-    if sigma is not None:
-        # add 0 for channel dim
-        sigma = (0, *sigma)
-    else:
-        sigma = None
+    sigma = (0, *sigma) if sigma is not None else None
 
     # add some random noise to affs (this is particularly necessary if your affs are
     #  stored as uint8 or similar)
@@ -89,11 +85,13 @@ def watershed_from_affinities(
 
     #######################
     if bias is not None:
-        if type(bias) == float:
+        if bias is float:
             bias = [bias] * affs.shape[0]
         else:
             assert len(bias) == affs.shape[0]
-        shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
+        shift += np.array([bias]).reshape(
+            (-1, *((1,) * (len(affs.shape) - 1)))
+        )
 
     affs = affs + shift
 

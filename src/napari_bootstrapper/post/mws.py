@@ -4,7 +4,6 @@ import mwatershed as mws
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -18,11 +17,7 @@ def mwatershed_from_affinities(
     strides: list[list[int]] | None = None,
     randomized_strides: bool = False,
 ):
-    if sigma is not None:
-        # add 0 for channel dim
-        sigma = (0, *sigma)
-    else:
-        sigma = None
+    sigma = (0, *sigma) if sigma is not None else None
 
     # add some random noise to affs (this is particularly necessary if your affs are
     #  stored as uint8 or similar)
