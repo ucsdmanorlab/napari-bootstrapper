@@ -17,15 +17,15 @@ DEFAULT_2D_MODEL_CONFIG = {
     "num_workers": 8,
     "save_snapshots_every": 1000,
     "net": {
-        "num_fmaps": 24,
-        "fmap_inc_factor": 3,
+        "num_fmaps": 12,
+        "fmap_inc_factor": 5,
         "input_shape": [3, 212, 212],
         "output_shape": [1, 120, 120],
         "shape_increase": [0, 120, 120],
     },
     "task": {
         "lsd_sigma": 20,
-        "lsd_downsample": 4,
+        "lsd_downsample": 2,
         "aff_neighborhood": [
             [-1, 0],
             [0, -1],
@@ -34,7 +34,7 @@ DEFAULT_2D_MODEL_CONFIG = {
             [-8, 0],
             [0, -8],
         ],
-        "aff_grow_boundary": 1,
+        "aff_grow_boundary": 0,
     },
 }
 
@@ -45,9 +45,9 @@ DEFAULT_3D_MODEL_CONFIG = {
     "num_workers": 8,
     "save_snapshots_every": 1000,
     "net": {
-        "num_fmaps": 8,
-        "fmap_inc_factor": 3,
-        "input_shape": [20, 212, 212],
+        "num_fmaps": 12,
+        "fmap_inc_factor": 2,
+        "input_shape": [24, 212, 212],
         "output_shape": [4, 120, 120],
         "shape_increase": [0, 120, 120],
     },
@@ -148,8 +148,8 @@ def get_2d_model(
 def get_3d_model(
     model_type,
     num_channels,
-    num_fmaps=8,
-    fmap_inc_factor=3,
+    num_fmaps=12,
+    fmap_inc_factor=2,
     **kwargs,
 ):
     return AffsUNet(
