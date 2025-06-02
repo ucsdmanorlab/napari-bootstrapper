@@ -1642,6 +1642,7 @@ class Widget(QMainWindow):
         url = PRETRAINED_3D_MODEL_URLS[model_type]
         file_path = self.tmp_dir / f"checkpoints_{model_type}.zip"
         out_dir = self.tmp_dir / f"checkpoints_{model_type}"
+        os.makedirs(out_dir, exist_ok=True)
 
         # if out_dir exists and contains checkpoints, skip download
         if not (out_dir.exists() and any(out_dir.iterdir())):
@@ -1668,8 +1669,7 @@ class Widget(QMainWindow):
             # unzip checkpoints
             print(f"Unzipping {model_type} checkpoints in {self.tmp_dir}...")
             with zipfile.ZipFile(file_path, "r") as zip_ref:
-                zip_ref.extractall(self.tmp_dir)
-                os.rename(out_dir.parent / model_type, out_dir)
+                zip_ref.extractall(out_dir)
 
             # clean up
             os.remove(file_path)
