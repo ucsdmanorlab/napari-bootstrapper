@@ -11,6 +11,7 @@
 - [Getting Started](#getting-started)
 - [Citation](#citation)
 - [Issues](#issues)
+- [Acknowledgements](#acknowledgements)
 - [Funding](#funding)
 
 ## Introduction
@@ -20,6 +21,8 @@
 Dense 3D segmentations are generated using the 2D->3D method described in the preprint titled [_Sparse Annotation is Sufficient for Bootstrapping Dense Segmentation_](https://www.biorxiv.org/content/10.1101/2024.06.14.599135v2). In the preprint, we show sparse 2D annotations made in ~10 minutes on a single section can generate dense 3D segmentations that are reasonably good starting points for refining or bootstrapping.
 
 This plugin is limited to the 2D->3D method and is intended for small volumes that can fit in memory. For more complex bootstrapping workflows, dedicated 3D models, and block-wise processing of large volumes, we recommend using the [_Bootstrapper_](https://github.com/ucsdmanorlab/bootstrapper) CLI tool.
+
+![cremi30](https://github.com/user-attachments/assets/db0e9ef7-0826-4184-9f00-8203e7bf48ec)
 
 ## Installation
 
@@ -56,6 +59,11 @@ conda activate napari-bootstrapper
 napari
 ```
 
+| Dataset Name | Data Type | Video Example | Reference |
+|--------------|-----------|---------------|-----------|
+| CREMI C | 3D volumetric stack | [![CREMI C example](https://img.youtube.com/vi/n0KkhZ-oBTs/0.jpg)](https://www.youtube.com/watch?v=n0KkhZ-oBTs) | [cremi.org](https://cremi.org) |
+| Fluo-C2DL-Huh7 | 2D + time series stack | [![Fluo-C2DL-Huh7 example](https://img.youtube.com/vi/vThjwJR_RNg/0.jpg)](https://www.youtube.com/watch?v=vThjwJR_RNg) | [celltrackingchallenge.net](https://celltrackingchallenge.net/) |
+
 ## Citation
 
 If you find Bootstrapper useful in your research, please consider citing our **[preprint](https://www.biorxiv.org/content/10.1101/2024.06.14.599135v1)**:
@@ -89,6 +97,15 @@ If you encounter any problems, please [file an issue](https://github.com/ucsdman
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
+
+
+
+## Acknowledgements
+We would like to thank and acknowledge the following napari plugins which have been valuable resources and instrumental in the development of this project:
+
+- [micro-sam](https://github.com/computational-cell-analytics/micro-sam) - For making Vision Foundation Models (VFMs) like Segment Anything Model (SAM) accessible to the community.
+- [empanada-napari](https://github.com/volume-em/empanada-napari) - For the proofreading widgets.
+- [napari-cellulus](https://github.com/funkelab/napari-cellulus) - For general help and development scaffolding.
 
 
 ## Funding
