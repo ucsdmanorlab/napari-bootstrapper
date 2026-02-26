@@ -933,6 +933,8 @@ class Widget(QMainWindow):
         self.start_inference_button.setEnabled(False)
         self.stop_inference_button.setEnabled(True)
 
+        self._inference_cancelled = False
+
         self.start_2d_training_button.setEnabled(False)
         self.stop_2d_training_button.setEnabled(False)
         self.save_2d_weights_button.setEnabled(False)
@@ -945,6 +947,8 @@ class Widget(QMainWindow):
         self.inference_worker.start()
 
     def prepare_for_stop_inference(self):
+        self._inference_cancelled = True
+
         self.start_2d_training_button.setEnabled(True)
         self.stop_2d_training_button.setEnabled(False)
         self.save_2d_weights_button.setEnabled(True)
@@ -979,6 +983,10 @@ class Widget(QMainWindow):
         if self.inference_worker is not None:
             self.inference_worker.quit()
             self.inference_worker = None
+
+    def _check_inference_cancelled(self):
+        if self._inference_cancelled:
+            raise InterruptedError("Inference cancelled by user")
 
     def reload_model_if_needed(self, dimension, model_type, num_channels):
         """Helper function to load a model if needed (new type or new checkpoint)"""
@@ -1045,6 +1053,13 @@ class Widget(QMainWindow):
 
     @thread_worker
     def infer(self):
+        try:
+            return self._infer_impl()
+        except InterruptedError:
+            print("Inference cancelled.")
+            return None
+
+    def _infer_impl(self):
 
         model_2d_type = self.model_2d_type_selector.currentText()
         model_3d_type = self.model_3d_type_selector.currentText()
@@ -1222,6 +1237,8 @@ class Widget(QMainWindow):
         for out in outs_2d:
             request_1.add(out, roi.shape)
 
+        self._check_inference_cancelled()
+
         # do not predict if latest already available
         if hasattr(self, "affs_3d"):
             pass
@@ -1241,6 +1258,8 @@ class Widget(QMainWindow):
 
                 for out in outs_2d:
                     setattr(self, str(out).lower(), batch[out].data)
+
+            self._check_inference_cancelled()
 
             pipeline_2 = (
                 tuple(
@@ -1273,6 +1292,8 @@ class Widget(QMainWindow):
                 batch = pipeline_2.request_batch(request_2)
 
             self.affs_3d = batch[pred_affs].data
+
+        self._check_inference_cancelled()
 
         # create napari layers for returning
         pred_layers = []
@@ -1307,17 +1328,15 @@ class Widget(QMainWindow):
                 component_name = channel_names[i]
                 component_color = colormaps[i % 3]
 
+                channel_data = out_data[i : i + 1]
+                if self.channels_dim is not None:
+                    channel_data = np.ascontiguousarray(
+                        np.moveaxis(channel_data, 0, self.channels_dim)
+                    )
+
                 pred_layers.append(
                     (
-                        (
-                            out_data[i : i + 1].copy()
-                            if self.channels_dim is None
-                            else np.moveaxis(
-                                out_data[i : i + 1].copy(),
-                                0,
-                                self.channels_dim,
-                            )
-                        ),
+                        channel_data,
                         {
                             "name": component_name,
                             "colormap": component_color,
@@ -1335,17 +1354,15 @@ class Widget(QMainWindow):
             component_name = affs_3d_names[i]
             component_color = colormaps[i % 3]
 
+            channel_data = self.affs_3d[i : i + 1]
+            if self.channels_dim is not None:
+                channel_data = np.ascontiguousarray(
+                    np.moveaxis(channel_data, 0, self.channels_dim)
+                )
+
             pred_layers.append(
                 (
-                    (
-                        self.affs_3d[i : i + 1].copy()
-                        if self.channels_dim is None
-                        else np.moveaxis(
-                            self.affs_3d[i : i + 1].copy(),
-                            0,
-                            self.channels_dim,
-                        )
-                    ),
+                    channel_data,
                     {
                         "name": component_name,
                         "colormap": component_color,
@@ -1354,6 +1371,8 @@ class Widget(QMainWindow):
                     "image",
                 )
             )
+
+        self._check_inference_cancelled()
 
         # segment affs
         self.segmentation = segment_affs(
@@ -1377,16 +1396,25 @@ class Widget(QMainWindow):
         ]
 
     def on_return_infer(self, layers):
-        for data, metadata, layer_type in layers:
-            if metadata["name"] in self.viewer.layers:
-                del self.viewer.layers[metadata["name"]]
-            if layer_type == "image":
-                self.viewer.add_image(data, **metadata)
-            elif layer_type == "labels":
-                self.viewer.add_labels(data.astype(int), **metadata)
+        if layers is None:
+            self.prepare_for_stop_inference()
+            return
 
-            if metadata["name"] != "segmentation":
-                self.viewer.layers[metadata["name"]].visible = False
+        with self.viewer.layers.events.blocker():
+            for data, metadata, layer_type in layers:
+                if metadata["name"] in self.viewer.layers:
+                    del self.viewer.layers[metadata["name"]]
+                if layer_type == "image":
+                    self.viewer.add_image(data, **metadata)
+                elif layer_type == "labels":
+                    self.viewer.add_labels(
+                        data.astype(int), **metadata
+                    )
+
+                if metadata["name"] != "segmentation":
+                    self.viewer.layers[metadata["name"]].visible = (
+                        False
+                    )
 
         self.inference_worker.quit()
         self.prepare_for_stop_inference()
