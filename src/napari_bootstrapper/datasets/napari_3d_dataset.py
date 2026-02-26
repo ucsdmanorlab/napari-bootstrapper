@@ -17,8 +17,8 @@ class Napari3DDataset(IterableDataset):
         model_type: str,
         input_shape: list[int],
         output_shape: list[int],
-        lsd_sigma: int = 20,
-        lsd_downsample: int = 4,
+        lsd_sigma: int = 10,
+        lsd_downsample: int = 2,
         in_aff_neighborhood: list[list[int]] | None = None,
         aff_grow_boundary: int = 1,
         aff_neighborhood: list[list[int]] | None = None,
@@ -43,8 +43,11 @@ class Napari3DDataset(IterableDataset):
                 [0, -1, 0],
                 [0, 0, -1],
                 [-2, 0, 0],
-                [0, -8, 0],
-                [0, 0, -8],
+                [0, -9, 0],
+                [0, 0, -9],
+                [-3, 0, 0],
+                [0, -27, 0],
+                [0, 0, -27],
             ]
             if aff_neighborhood is None
             else aff_neighborhood
@@ -82,12 +85,11 @@ class Napari3DDataset(IterableDataset):
             )
             + gp.Pad(self.labels, None, mode="reflect")
             + gp.DeformAugment(
-                control_point_spacing=(20, 20),
-                jitter_sigma=(3.0, 3.0),
+                control_point_spacing=(10, 10),
+                jitter_sigma=(2.0, 2.0),
                 spatial_dims=2,
                 subsample=1,
-                scale_interval=(0.9, 1.1),
-                graph_raster_voxel_size=self.voxel_size[1:],
+                scale_interval=(0.8, 1.2),
                 p=0.5,
             )
             + gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=5)
@@ -106,20 +108,20 @@ class Napari3DDataset(IterableDataset):
                     downsample=self.lsd_downsample,
                 )
                 + gp.NoiseAugment(self.input_lsds, mode="gaussian", p=0.33)
-                + CustomIntensityAugment(
+                + gp.IntensityAugment(
                     self.input_lsds,
                     0.9,
                     1.1,
                     -0.1,
                     0.1,
-                    z_section_wise=True,
+                    slab=(-1, 1, -1, -1),
                     p=0.5,
                 )
-                + SmoothAugment(self.input_lsds, p=0.5)
+                + SmoothAugment(self.input_lsds, slab=(-1, 1, -1, -1), blur_min=0.1, blur_max=1.5, p=0.5)
                 + gp.DefectAugment(
                     self.input_lsds,
-                    prob_missing=0.15,
-                    prob_low_contrast=0.05,
+                    prob_missing=0.0,
+                    prob_low_contrast=0.1,
                     prob_deform=0.0,
                     axis=1,
                 )
@@ -138,20 +140,12 @@ class Napari3DDataset(IterableDataset):
                 )
                 + ObfuscateAffs(self.input_affs)
                 + gp.NoiseAugment(self.input_affs, mode="poisson", p=0.33)
-                + CustomIntensityAugment(
-                    self.input_affs,
-                    0.9,
-                    1.1,
-                    -0.1,
-                    0.1,
-                    z_section_wise=True,
-                    p=0.5,
-                )
-                + SmoothAugment(self.input_affs, p=0.5)
+                + gp.IntensityAugment(self.input_affs, 0.9, 1.1, -0.1, 0.1, slab=(-1, 1, -1, -1), p=0.5)
+                + SmoothAugment(self.input_affs, slab=(-1, 1, -1, -1), blur_min=0.1, blur_max=1.5, p=0.5)
                 + gp.DefectAugment(
                     self.input_affs,
-                    prob_missing=0.15,
-                    prob_low_contrast=0.05,
+                    prob_missing=0.0,
+                    prob_low_contrast=0.1,
                     prob_deform=0.0,
                     axis=1,
                 )
@@ -167,7 +161,7 @@ class Napari3DDataset(IterableDataset):
                 affinities=self.gt_affs,
                 dtype=np.float32,
             )
-            + gp.BalanceLabels(self.gt_affs, self.affs_weights)
+            + gp.BalanceLabels(self.gt_affs, self.affs_weights, slab=(3, -1, -1, -1))
         )
 
     def __iter__(self):

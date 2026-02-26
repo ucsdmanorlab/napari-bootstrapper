@@ -10,16 +10,17 @@ class AffsUNet(torch.nn.Module):
         self,
         in_channels,
         num_fmaps=12,
+        num_fmaps_out=12,
         fmap_inc_factor=2,
         downsample_factors=((1, 2, 2), (1, 2, 2), (1, 2, 2)),
         kernel_size_down=(
-            ((3, 3, 3), (3, 3, 3)),
-            ((3, 3, 3), (3, 3, 3)),
-            ((2, 3, 3), (2, 3, 3)),
             ((1, 3, 3), (1, 3, 3)),
+            ((1, 3, 3), (1, 3, 3)),
+            ((3, 3, 3), (3, 3, 3)),
+            ((3, 3, 3), (3, 3, 3)),
         ),
         kernel_size_up=(
-            ((2, 3, 3), (2, 3, 3)),
+            ((3, 3, 3), (3, 3, 3)),
             ((3, 3, 3), (3, 3, 3)),
             ((3, 3, 3), (3, 3, 3)),
         ),
@@ -38,8 +39,11 @@ class AffsUNet(torch.nn.Module):
                 [0, -1, 0],
                 [0, 0, -1],
                 [-2, 0, 0],
-                [0, -8, 0],
-                [0, 0, -8],
+                [0, -9, 0],
+                [0, 0, -9],
+                [-3, 0, 0],
+                [0, -27, 0],
+                [0, 0, -27],
             ],
         )
 
@@ -68,10 +72,11 @@ class AffsUNet(torch.nn.Module):
             kernel_size_up=kernel_size_up,
             constant_upsample=True,
             padding="valid",
+            num_fmaps_out=num_fmaps_out,
         )
 
         self.affs_head = ConvPass3D(
-            num_fmaps, len(self.aff_nbhd), [[1, 1, 1]], activation="Sigmoid"
+            num_fmaps_out, len(self.aff_nbhd), [[1, 1, 1]], activation="Sigmoid"
         )
 
     def forward(self, *inputs):

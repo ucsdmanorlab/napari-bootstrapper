@@ -11,6 +11,7 @@ class Model(torch.nn.Module):
         in_channels,
         stack_infer=True,
         num_fmaps=12,
+        num_fmaps_out=12,
         fmap_inc_factor=5,
         downsample_factors=((2, 2), (2, 2), (2, 2)),
         model_type="2d_mtlsd",
@@ -36,6 +37,7 @@ class Model(torch.nn.Module):
             kernel_size_up=ksu,
             constant_upsample=True,
             padding="valid",
+            num_fmaps_out=num_fmaps_out,
         )
 
         # Create output heads based on model type
@@ -44,12 +46,12 @@ class Model(torch.nn.Module):
 
         if self.has_lsd:
             self.lsd_head = ConvPass2D(
-                num_fmaps, 6, [[1, 1]], activation="Sigmoid"
+                num_fmaps_out, 6, [[1, 1]], activation="Sigmoid"
             )
 
         if self.has_aff:
             self.aff_head = ConvPass2D(
-                num_fmaps, len(self.aff_nbhd), [[1, 1]], activation="Sigmoid"
+                num_fmaps_out, len(self.aff_nbhd), [[1, 1]], activation="Sigmoid"
             )
 
     def forward(self, x):

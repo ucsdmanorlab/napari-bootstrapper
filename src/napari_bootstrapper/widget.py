@@ -96,7 +96,7 @@ class Widget(QMainWindow):
         # initialize outer layout
         layout = QVBoxLayout()
 
-        self.tmp_dir = Path.home() / ".cache" / "napari_bootstrapper"
+        self.tmp_dir = Path.home() / ".napari_bootstrapper"
         self.tmp_dir.mkdir(exist_ok=True)
 
         # initialize individual grid layouts from top to bottom
@@ -722,6 +722,7 @@ class Widget(QMainWindow):
                 mask_layer,
                 model_type,
                 channels_dim=self.channels_dim,
+                adj_slices=model_config["net"]["adj_slices"],
                 input_shape=model_config["net"]["input_shape"],
                 output_shape=model_config["net"]["output_shape"],
                 **model_config["task"],
@@ -770,7 +771,6 @@ class Widget(QMainWindow):
             torch.optim.Adam(
                 getattr(self, f"model_{dimension}").parameters(),
                 lr=model_config["learning_rate"],
-                # weight_decay=0.01,
             ),
         )
 
@@ -1056,22 +1056,22 @@ class Widget(QMainWindow):
 
         voxel_size = 1, 1, 1
         offset = 0, 0, 0
-        input_shape_2d = [
+        input_shape_2d = [self.model_2d_config["net"]["adj_slices"], *[
             sum(x)
             for x in zip(
                 self.model_2d_config["net"]["input_shape"],
                 self.model_2d_config["net"]["shape_increase"],
                 strict=False,
             )
-        ]
-        output_shape_2d = [
+        ]]
+        output_shape_2d = [1, *[
             sum(x)
             for x in zip(
                 self.model_2d_config["net"]["output_shape"],
                 self.model_2d_config["net"]["shape_increase"],
                 strict=False,
             )
-        ]
+        ]]
         input_shape_3d = [
             sum(x)
             for x in zip(
@@ -1330,7 +1330,7 @@ class Widget(QMainWindow):
         # For 3D affs
         affs_3d_names = [f"3d affs {nb}" for nb in self.model_3d.aff_nbhd]
 
-        num_affs_3d = 6
+        num_affs_3d = len(affs_3d_names)
         for i in range(num_affs_3d):
             component_name = affs_3d_names[i]
             component_color = colormaps[i % 3]
@@ -1676,7 +1676,7 @@ class Widget(QMainWindow):
 
         # get largest checkpoint
         checkpoints = sorted(
-            out_dir.glob("model_checkpoint_*"),
+            out_dir.glob("**/model_checkpoint_*"),
             key=lambda x: [
                 int(c) if c.isdigit() else c.lower()
                 for c in re.split("([0-9]+)", str(x))
@@ -1704,6 +1704,8 @@ class Widget(QMainWindow):
 
         # Load the state dict
         state = torch.load(model_checkpoint, map_location=self.device)
+        state = state.get('state_dict', state.get('model_state_dict', state))
+        state = {k.removeprefix('model.'): v for k, v in state.items()}
 
         model = getattr(self, f"model_{dimension}")
 

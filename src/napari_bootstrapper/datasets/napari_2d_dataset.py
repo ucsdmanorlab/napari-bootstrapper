@@ -8,6 +8,10 @@ from ..gp.calc_max_padding import calc_max_padding
 from ..gp.napari_image_source import NapariImageSource
 from ..gp.napari_labels_source import NapariLabelsSource
 from ..gp.smooth_augment import SmoothAugment
+from ..gp.clahe_augment import ClaheAugment
+from ..gp.gamma_augment import GammaAugment
+from ..gp.impulse_noise_augment import ImpulseNoiseAugment
+from ..gp.bump_background import BumpBackground, UnbumpBackground
 
 
 class Napari2DDataset(IterableDataset):
@@ -17,10 +21,11 @@ class Napari2DDataset(IterableDataset):
         labels_layer: Labels,
         mask_layer: Labels,
         model_type: str,
+        adj_slices: int,
         input_shape: list[int],
         output_shape: list[int],
-        lsd_sigma: int = 20,
-        lsd_downsample: int = 4,
+        lsd_sigma: int = 10,
+        lsd_downsample: int = 2,
         aff_neighborhood: list[list[int]] | None = None,
         aff_grow_boundary: int = 1,
         channels_dim: int | None = None,
@@ -31,8 +36,8 @@ class Napari2DDataset(IterableDataset):
         self.mask_layer = mask_layer
         self.channels_dim = channels_dim
 
-        self.input_shape = input_shape
-        self.output_shape = output_shape
+        self.input_shape = [adj_slices, *input_shape]
+        self.output_shape = [1, *output_shape]
         self.voxel_size = 1, 1, 1
         self.offset = 0, 0, 0
 
@@ -141,32 +146,36 @@ class Napari2DDataset(IterableDataset):
             + gp.SimpleAugment(transpose_only=[1, 2])
             + gp.DeformAugment(
                 control_point_spacing=(10, 10),
-                jitter_sigma=(3.0, 3.0),
+                jitter_sigma=(2.0, 2.0),
                 spatial_dims=2,
                 subsample=1,
-                scale_interval=(0.9, 1.1),
-                graph_raster_voxel_size=self.voxel_size[1:],
+                scale_interval=(0.8, 1.2),
                 p=0.5,
             )
-            + gp.NoiseAugment(self.raw, p=0.5)
+            + gp.NoiseAugment(self.raw, p=0.2)
+            + ClaheAugment(self.raw, p=0.2)
+            + GammaAugment(self.raw, slab=(1, -1, -1), p=0.2)
             + gp.IntensityAugment(
                 self.raw,
                 scale_min=0.9,
                 scale_max=1.1,
                 shift_min=-0.1,
                 shift_max=0.1,
-                z_section_wise=True,
+                slab=(1, -1, -1),
                 p=0.5,
             )
-            + SmoothAugment(self.raw, p=0.5)
+            + ImpulseNoiseAugment(self.raw, pixel_p=0.01, p=0.1)
             + gp.DefectAugment(
                 self.raw,
                 prob_missing=0.0 if self.input_shape[0] == 1 else 0.05,
+                prob_low_contrast=0.2,
             )
+            + SmoothAugment(self.raw, blur_min=0.1, blur_max=1.5, slab=(1, -1, -1), p=0.2)
             + gp.IntensityScaleShift(self.raw, 2, -1)
         )
 
         if self.model_type == "2d_lsd" or self.model_type == "2d_mtlsd":
+            self.pipeline += BumpBackground(self.labels)
             self.pipeline += Add2DLSDs(
                 self.labels,
                 self.gt_lsds,
@@ -175,6 +184,7 @@ class Napari2DDataset(IterableDataset):
                 sigma=self.lsd_sigma,
                 downsample=self.lsd_downsample,
             )
+            self.pipeline += UnbumpBackground(self.labels)
         if self.model_type == "2d_affs" or self.model_type == "2d_mtlsd":
             if self.aff_grow_boundary > 0:
                 self.pipeline += gp.GrowBoundary(
@@ -191,7 +201,7 @@ class Napari2DDataset(IterableDataset):
                 affinities_mask=self.gt_affs_mask,
                 dtype=np.float32,
             ) + gp.BalanceLabels(
-                self.gt_affs, self.affs_weights, mask=self.gt_affs_mask
+                self.gt_affs, self.affs_weights, mask=self.gt_affs_mask, slab=(2, -1, -1, -1)
             )
 
     def __iter__(self):

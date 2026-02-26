@@ -4,10 +4,9 @@ from .model_2d import Model as Model2D
 from .model_3d import AffsUNet
 
 PRETRAINED_3D_MODEL_URLS = {
-    "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.1/3d_affs_from_2d_affs.zip",
-    "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.1/3d_affs_from_2d_lsd.zip",
-    "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.1/3d_affs_from_2d_mtlsd.zip",
-    "3d_affs_from_3d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.1/3d_affs_from_3d_lsd.zip",
+    "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.2/3d_affs_from_2d_affs.zip",
+    "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.2/3d_affs_from_2d_lsd.zip",
+    "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.2/3d_affs_from_2d_mtlsd.zip",
 }
 
 DEFAULT_2D_MODEL_CONFIG = {
@@ -17,22 +16,24 @@ DEFAULT_2D_MODEL_CONFIG = {
     "num_workers": 8,
     "save_snapshots_every": 1000,
     "net": {
+        "adj_slices": 3,
         "num_fmaps": 12,
+        "num_fmaps_out": 12,
         "fmap_inc_factor": 5,
-        "input_shape": [3, 212, 212],
-        "output_shape": [1, 120, 120],
-        "shape_increase": [0, 120, 120],
+        "input_shape": [196, 196],
+        "output_shape": [104, 104],
+        "shape_increase": [120, 120],
     },
     "task": {
-        "lsd_sigma": 20,
+        "lsd_sigma": 10,
         "lsd_downsample": 2,
         "aff_neighborhood": [
             [-1, 0],
             [0, -1],
-            [-4, 0],
-            [0, -4],
-            [-8, 0],
-            [0, -8],
+            [-9, 0],
+            [0, -9],
+            [-27, 0],
+            [0, -27],
         ],
         "aff_grow_boundary": 0,
     },
@@ -45,22 +46,23 @@ DEFAULT_3D_MODEL_CONFIG = {
     "num_workers": 8,
     "save_snapshots_every": 1000,
     "net": {
-        "num_fmaps": 12,
-        "fmap_inc_factor": 2,
-        "input_shape": [24, 212, 212],
-        "output_shape": [4, 120, 120],
-        "shape_increase": [0, 120, 120],
+        "num_fmaps": 9,
+        "num_fmaps_out": 18,
+        "fmap_inc_factor": 3,
+        "input_shape": [24, 148, 148],
+        "output_shape": [4, 56, 56],
+        "shape_increase": [12, 120, 120],
     },
     "task": {
-        "lsd_sigma": 20,
-        "lsd_downsample": 4,
+        "lsd_sigma": 10,
+        "lsd_downsample": 2,
         "in_aff_neighborhood": [
             [-1, 0],
             [0, -1],
-            [-4, 0],
-            [0, -4],
-            [-8, 0],
-            [0, -8],
+            [-9, 0],
+            [0, -9],
+            [-27, 0],
+            [0, -27],
         ],
         "aff_grow_boundary": 1,
         "aff_neighborhood": [
@@ -68,8 +70,11 @@ DEFAULT_3D_MODEL_CONFIG = {
             [0, -1, 0],
             [0, 0, -1],
             [-2, 0, 0],
-            [0, -8, 0],
-            [0, 0, -8],
+            [0, -9, 0],
+            [0, 0, -9],
+            [-3, 0, 0],
+            [0, -27, 0],
+            [0, 0, -27],
         ],
     },
 }
@@ -133,6 +138,7 @@ def get_2d_model(
     model_type,
     num_channels,
     num_fmaps=12,
+    num_fmaps_out=12,
     fmap_inc_factor=5,
     **kwargs,
 ):
@@ -141,6 +147,7 @@ def get_2d_model(
         num_fmaps=num_fmaps,
         fmap_inc_factor=fmap_inc_factor,
         model_type=model_type,
+        num_fmaps_out=num_fmaps_out,
         **kwargs,
     )
 
@@ -149,6 +156,7 @@ def get_3d_model(
     model_type,
     num_channels,
     num_fmaps=12,
+    num_fmaps_out=18,
     fmap_inc_factor=2,
     **kwargs,
 ):
@@ -157,5 +165,6 @@ def get_3d_model(
         num_fmaps=num_fmaps,
         fmap_inc_factor=fmap_inc_factor,
         model_type=model_type,
+        num_fmaps_out=num_fmaps_out,
         **kwargs,
     )
