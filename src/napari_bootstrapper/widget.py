@@ -714,6 +714,10 @@ class Widget(QMainWindow):
 
         model_config = getattr(self, f"model_{dimension}_config")
 
+        # Ensure output_shape is computed
+        if "output_shape" not in model_config["net"]:
+            self.compute_output_shape(dimension)
+
         # Create torch dataset
         if dimension == "2d":
             self.napari_dataset = Napari2DDataset(
@@ -1088,6 +1092,12 @@ class Widget(QMainWindow):
         int_affs = gp.ArrayKey("AFFS_2D")
         pred_affs = gp.ArrayKey("AFFS_3D")
 
+        # Ensure output_shapes are computed
+        if "output_shape" not in self.model_2d_config["net"]:
+            self.compute_output_shape("2d")
+        if "output_shape" not in self.model_3d_config["net"]:
+            self.compute_output_shape("3d")
+
         voxel_size = 1, 1, 1
         offset = 0, 0, 0
         input_shape_2d = [self.model_2d_config["net"]["adj_slices"], *[
@@ -1429,7 +1439,9 @@ class Widget(QMainWindow):
             f"Made mask for {labels_name} and made new layer: mask_{labels_name}!"
         )
 
-    def open_parameter_dialog(self, title, params, param_filter=None):
+    def open_parameter_dialog(
+        self, title, params, param_filter=None, readonly_params=None
+    ):
         """
         Generic parameter dialog function that can be used for model configs or segmentation options.
         Supports nested dictionaries.
@@ -1442,6 +1454,8 @@ class Widget(QMainWindow):
             Dictionary of parameters to edit (can contain nested dictionaries)
         param_filter : callable, optional
             Function that takes a parameter name and returns True if it should be included
+        readonly_params : set, optional
+            Set of parameter names (dot-notation) that should be displayed as read-only
 
         Returns:
         --------
@@ -1451,15 +1465,16 @@ class Widget(QMainWindow):
         # Create dialog
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
-        dialog.setMinimumWidth(400)
+        dialog.setMinimumWidth(800)
 
         # Create layout
         layout = QVBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(6, 6, 6, 6)
         form_layout = QGridLayout()
 
         # Create form fields for each parameter
         widgets = {}
-        row = 0
 
         # Function to flatten nested dictionaries with path notation (e.g., "net.num_fmaps")
         def flatten_dict(d, parent_key="", sep="."):
@@ -1476,43 +1491,91 @@ class Widget(QMainWindow):
         flat_params = flatten_dict(params)
         param_items = list(flat_params.items())
 
-        for param_name, param_value in param_items:
-            # Skip if filtered out
-            if param_filter and not param_filter(param_name):
-                continue
+        # Filter items
+        filtered_items = [
+            (name, val)
+            for name, val in param_items
+            if not param_filter or param_filter(name)
+        ]
 
-            # Create label with proper formatting (replace dots with spaces)
-            label_text = (
-                param_name.replace(".", " → ").replace("_", " ").title()
+        # Group items by prefix (top-level vs nested groups)
+        from collections import OrderedDict
+
+        groups = OrderedDict()
+        for param_name, param_value in filtered_items:
+            if "." in param_name:
+                prefix = param_name.split(".")[0]
+            else:
+                prefix = ""
+            groups.setdefault(prefix, []).append(
+                (param_name, param_value)
             )
-            label = QLabel(label_text)
-            form_layout.addWidget(label, row, 0)
 
-            # Create appropriate widget based on parameter type
+        def create_widget(param_name, param_value):
+            is_readonly = (
+                readonly_params and param_name in readonly_params
+            )
             if isinstance(param_value, bool):
                 widget = QCheckBox()
                 widget.setChecked(param_value)
+                if is_readonly:
+                    widget.setEnabled(False)
             else:
                 widget = QLineEdit()
                 widget.setText(str(param_value))
-
-                # Add tooltips for complex types
+                if is_readonly:
+                    widget.setReadOnly(True)
+                    widget.setStyleSheet(
+                        "QLineEdit { color: #888888; }"
+                    )
                 if isinstance(param_value, list):
                     widget.setToolTip(
                         f"Format: {type(param_value).__name__}, e.g. {param_value}"
                     )
+            return widget
 
-            form_layout.addWidget(widget, row, 1)
-            widgets[param_name] = widget
-            row += 1
+        # Build layout with groups
+        for prefix, items in groups.items():
+            if prefix == "":
+                # Top-level params go directly in the form
+                group_layout = QGridLayout()
+                for row, (param_name, param_value) in enumerate(items):
+                    label_text = param_name.replace("_", " ").title()
+                    group_layout.addWidget(QLabel(label_text), row, 0)
+                    widget = create_widget(param_name, param_value)
+                    group_layout.addWidget(widget, row, 1)
+                    widgets[param_name] = widget
+                layout.addLayout(group_layout)
+            else:
+                # Nested params go in a collapsible section
+                from superqt import QCollapsible
+
+                collapsible = QCollapsible(
+                    prefix.replace("_", " ").title()
+                )
+                group_widget = QWidget()
+                group_grid = QGridLayout()
+                group_grid.setContentsMargins(4, 2, 4, 2)
+                group_grid.setSpacing(4)
+                for row, (param_name, param_value) in enumerate(items):
+                    # Strip prefix for display
+                    short_name = param_name.split(".", 1)[1]
+                    label_text = short_name.replace("_", " ").title()
+                    group_grid.addWidget(QLabel(label_text), row, 0)
+                    widget = create_widget(param_name, param_value)
+                    group_grid.addWidget(widget, row, 1)
+                    widgets[param_name] = widget
+                group_widget.setLayout(group_grid)
+                collapsible.addWidget(group_widget)
+                layout.addWidget(collapsible)
 
         # Add buttons
         button_box = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
         )
 
-        layout.addLayout(form_layout)
         layout.addWidget(button_box)
+        layout.setSizeConstraint(QVBoxLayout.SetMinAndMaxSize)
         dialog.setLayout(layout)
 
         # Track result
@@ -1565,6 +1628,35 @@ class Widget(QMainWindow):
         dialog.exec_()
         return result[0]
 
+    def compute_output_shape(self, dimension):
+        """Compute output_shape by forward pass with dummy tensor."""
+        from napari_bootstrapper.models.unet import UNet
+
+        config = getattr(self, f"model_{dimension}_config")
+        net = config["net"]
+        input_shape = net["input_shape"]
+
+        unet = UNet(
+            in_channels=1,
+            num_fmaps=net["num_fmaps"],
+            fmap_inc_factor=net["fmap_inc_factor"],
+            downsample_factors=net["downsample_factors"],
+            kernel_size_down=net.get("kernel_size_down"),
+            kernel_size_up=net.get("kernel_size_up"),
+            num_fmaps_out=net.get("num_fmaps_out"),
+        )
+
+        dummy = torch.zeros(1, 1, *input_shape)
+        with torch.no_grad():
+            out = unet(dummy)
+        output_shape = list(out.shape[2:])
+
+        config["net"]["output_shape"] = output_shape
+        print(
+            f"{dimension.upper()} output_shape computed: {output_shape}"
+        )
+        return output_shape
+
     def open_model_options(self, dimension):
         """
         Opens a dialog with model configuration options.
@@ -1585,12 +1677,9 @@ class Widget(QMainWindow):
             if "." not in param_name:
                 return True
 
-            # For nested parameters, check based on model type
             # Network parameters are always included
             if param_name.startswith("net."):
-                task_param = param_name.split(".")[1]
-                if "shape" not in task_param:
-                    return True
+                return True
 
             # Task-specific parameters
             if param_name.startswith("task."):
@@ -1608,13 +1697,29 @@ class Widget(QMainWindow):
 
             return False
 
+        # Track architecture params before dialog to detect changes
+        net_before = {
+            k: str(v)
+            for k, v in config["net"].items()
+            if k != "output_shape"
+        }
+
         success = self.open_parameter_dialog(
             title=f"Advanced {dimension.upper()} Model Configuration",
             params=config,
             param_filter=param_filter,
+            readonly_params={"net.output_shape"},
         )
 
         if success:
+            # Check if architecture params changed
+            net_after = {
+                k: str(v)
+                for k, v in config["net"].items()
+                if k != "output_shape"
+            }
+            if net_before != net_after:
+                self.compute_output_shape(dimension)
             print(f"Updated {dimension} model configuration:")
 
     def open_seg_options(self):
@@ -1661,15 +1766,25 @@ class Widget(QMainWindow):
                     f"from checkpoint."
                 )
             if "model_type" in state:
-                current_type = getattr(
+                selector = getattr(
                     self, f"model_{dimension}_type_selector"
-                ).currentText()
-                if state["model_type"] != current_type:
-                    print(
-                        f"WARNING: Checkpoint model type "
-                        f"'{state['model_type']}' differs from "
-                        f"current selection '{current_type}'."
-                    )
+                )
+                current_type = selector.currentText()
+                checkpoint_type = state["model_type"]
+                if checkpoint_type != current_type:
+                    idx = selector.findText(checkpoint_type)
+                    if idx >= 0:
+                        selector.setCurrentIndex(idx)
+                        print(
+                            f"Updated {dimension.upper()} model type "
+                            f"to '{checkpoint_type}' from checkpoint."
+                        )
+                    else:
+                        print(
+                            f"WARNING: Checkpoint model type "
+                            f"'{checkpoint_type}' not found in "
+                            f"selector options."
+                        )
 
         getattr(self, f"start_{dimension}_training_button").setEnabled(True)
         getattr(self, f"save_{dimension}_weights_button").setEnabled(True)

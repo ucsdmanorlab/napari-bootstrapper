@@ -14,6 +14,8 @@ class Model(torch.nn.Module):
         num_fmaps_out=12,
         fmap_inc_factor=5,
         downsample_factors=((2, 2), (2, 2), (2, 2)),
+        kernel_size_down=None,
+        kernel_size_up=None,
         model_type="2d_mtlsd",
         **kwargs,
     ):
@@ -25,16 +27,18 @@ class Model(torch.nn.Module):
         self.aff_nbhd = kwargs.get("aff_neighborhood", [[-1, 0], [0, -1]])
 
         num_levels = len(downsample_factors)
-        ksd = (((3, 3), (3, 3)),) * (num_levels + 1)
-        ksu = (((3, 3), (3, 3)),) * num_levels
+        if kernel_size_down is None:
+            kernel_size_down = [[[3, 3], [3, 3]]] * (num_levels + 1)
+        if kernel_size_up is None:
+            kernel_size_up = [[[3, 3], [3, 3]]] * num_levels
 
         self.unet = UNet2D(
             in_channels=in_channels,
             num_fmaps=num_fmaps,
             fmap_inc_factor=fmap_inc_factor,
             downsample_factors=downsample_factors,
-            kernel_size_down=ksd,
-            kernel_size_up=ksu,
+            kernel_size_down=kernel_size_down,
+            kernel_size_up=kernel_size_up,
             constant_upsample=True,
             padding="valid",
             num_fmaps_out=num_fmaps_out,
