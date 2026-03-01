@@ -1297,76 +1297,54 @@ class Widget(QMainWindow):
 
         # create napari layers for returning
         pred_layers = []
-        colormaps = ["red", "green", "blue"]
 
-        # Add individual layers for each 2D output
+        # Add 2D outputs as single stacked layers with channel slider
         for out in outs_2d:
             out_data = getattr(self, str(out).lower())
-            out_name = str(out).lower().replace("_", " ")
-            num_channels = out_data.shape[0]
-
-            if "affs" in out_name:
-                channel_names = [
-                    f"{out_name} {nb}" for nb in self.model_2d.aff_nbhd
-                ]
-            elif "lsds" in out_name:
-                # For LSDs: offset(y), offset(x), covar(yy), covar(xx), corr(yx), size
-                channel_names = [
-                    f"{out_name} offset (y)",
-                    f"{out_name} offset (x)",
-                    f"{out_name} covar (yy)",
-                    f"{out_name} covar (xx)",
-                    f"{out_name} corr (yx)",
-                    f"{out_name} size",
-                ]
-            else:
-                channel_names = [
-                    f"{out_name} ({i})" for i in range(out_data.shape[0])
-                ]
-
-            for i in range(num_channels):
-                component_name = channel_names[i]
-                component_color = colormaps[i % 3]
-
-                channel_data = out_data[i : i + 1]
-                if self.channels_dim is not None:
-                    channel_data = np.ascontiguousarray(
-                        np.moveaxis(channel_data, 0, self.channels_dim)
-                    )
-
-                pred_layers.append(
-                    (
-                        channel_data,
-                        {
-                            "name": component_name,
-                            "colormap": component_color,
-                            "blending": "additive",
-                        },
-                        "image",
-                    )
-                )
-
-        # For 3D affs
-        affs_3d_names = [f"3d affs {nb}" for nb in self.model_3d.aff_nbhd]
-
-        num_affs_3d = len(affs_3d_names)
-        for i in range(num_affs_3d):
-            component_name = affs_3d_names[i]
-            component_color = colormaps[i % 3]
-
-            channel_data = self.affs_3d[i : i + 1]
-            if self.channels_dim is not None:
-                channel_data = np.ascontiguousarray(
-                    np.moveaxis(channel_data, 0, self.channels_dim)
-                )
+            # Fix naming: "affs_2d" -> "2d affs", "lsds_2d" -> "2d lsds"
+            raw_name = str(out).lower()
+            parts = raw_name.split("_")
+            out_name = (
+                f"{parts[1]} {parts[0]}"
+                if len(parts) == 2
+                else raw_name.replace("_", " ")
+            )
 
             pred_layers.append(
                 (
-                    channel_data,
+                    out_data,
+                    {"name": out_name},
+                    "image",
+                )
+            )
+
+        # Add RGB-grouped layers for 3D affs (groups of 3)
+        num_affs_3d = self.affs_3d.shape[0]
+        group_size = 3
+        for start in range(0, num_affs_3d, group_size):
+            end = min(start + group_size, num_affs_3d)
+            group_data = self.affs_3d[start:end]
+
+            # Pad to 3 channels for RGB if needed
+            pad_size = 3 - group_data.shape[0]
+            if pad_size > 0:
+                pad_shape = (pad_size, *group_data.shape[1:])
+                group_data = np.concatenate(
+                    [group_data, np.zeros(pad_shape)], axis=0
+                )
+
+            # Move channel dim to last for RGB: (3, D, H, W) -> (D, H, W, 3)
+            rgb_data = np.ascontiguousarray(
+                np.moveaxis(group_data, 0, -1)
+            )
+
+            group_name = f"3d affs [{start}:{end}]"
+            pred_layers.append(
+                (
+                    rgb_data,
                     {
-                        "name": component_name,
-                        "colormap": component_color,
-                        "blending": "additive",
+                        "name": group_name,
+                        "rgb": True,
                     },
                     "image",
                 )
@@ -1405,15 +1383,11 @@ class Widget(QMainWindow):
                 if metadata["name"] in self.viewer.layers:
                     del self.viewer.layers[metadata["name"]]
                 if layer_type == "image":
-                    self.viewer.add_image(data, **metadata)
+                    layer = self.viewer.add_image(data, **metadata)
+                    layer.visible = False
                 elif layer_type == "labels":
                     self.viewer.add_labels(
                         data.astype(int), **metadata
-                    )
-
-                if metadata["name"] != "segmentation":
-                    self.viewer.layers[metadata["name"]].visible = (
-                        False
                     )
 
         self.inference_worker.quit()
