@@ -578,7 +578,6 @@ class Widget(QMainWindow):
         self.seg_method_selector = QComboBox()
         self.seg_method_selector.addItems(
             [
-                # "watershed",
                 "mutex watershed",
                 "connected components",
             ]
@@ -1384,13 +1383,14 @@ class Widget(QMainWindow):
 
         # segment affs
         method = self.seg_method_selector.currentText()
+        seg_params = self.seg_params[method]
+        selected = seg_params.get("selected_channels")
+
         if method == "mutex watershed":
-            mws_params = self.seg_params["mutex watershed"]
-            selected = mws_params.get("selected_channels")
-            nbhd = mws_params["neighborhood"]
+            nbhd = seg_params["neighborhood"]
 
             # Expand bias tuple into per-channel list
-            bias = mws_params.get("bias", (-0.4, -0.7))
+            bias = seg_params.get("bias", (-0.4, -0.7))
             if isinstance(bias, (list, tuple)) and len(bias) == 2:
                 n = len(nbhd)
                 per_ch_bias = [bias[0]] * min(3, n) + [bias[1]] * max(
@@ -1399,11 +1399,10 @@ class Widget(QMainWindow):
             else:
                 per_ch_bias = list(bias)
 
-            # Build clean params for segment_affs
             use_affs = self.affs_3d
             use_nbhd = nbhd
             use_bias = per_ch_bias
-            use_strides = mws_params.get("strides")
+            use_strides = seg_params.get("strides")
 
             if (
                 selected is not None
@@ -1417,7 +1416,7 @@ class Widget(QMainWindow):
 
             clean_mws = {
                 k: v
-                for k, v in mws_params.items()
+                for k, v in seg_params.items()
                 if k not in {"selected_channels", "bias",
                              "neighborhood", "strides"}
             }
@@ -1427,6 +1426,30 @@ class Widget(QMainWindow):
                 clean_mws["strides"] = use_strides
             clean_params = dict(self.seg_params)
             clean_params["mutex watershed"] = clean_mws
+
+            self.segmentation = segment_affs(
+                use_affs,
+                method=method,
+                params=clean_params,
+            )
+        elif method == "connected components":
+            # CC uses first 3 selected channels
+            if selected is not None:
+                use_affs = self.affs_3d[selected[:3]]
+            else:
+                use_affs = self.affs_3d[:3]
+
+            clean_cc = {
+                k: v
+                for k, v in seg_params.items()
+                if k not in {"selected_channels", "neighborhood"}
+            }
+            # Expand bias to per-channel list for CC
+            bias = clean_cc.get("bias", 0.0)
+            if isinstance(bias, (int, float)):
+                clean_cc["bias"] = [bias] * use_affs.shape[0]
+            clean_params = dict(self.seg_params)
+            clean_params["connected components"] = clean_cc
 
             self.segmentation = segment_affs(
                 use_affs,
@@ -1692,23 +1715,27 @@ class Widget(QMainWindow):
         if "bias" not in mws_params:
             mws_params["bias"] = (-0.4, -0.7)
 
-        # Auto-generate strides from offsets: group by 3 (one per axis),
+        # Always regenerate strides from offsets: group by 3 (one per axis),
         # stride = max abs value per axis across the group
-        if len(mws_params.get("strides", [])) != n:
-            dims = len(aff_nbhd[0]) if aff_nbhd else 3
-            strides = []
-            for g in range(0, n, dims):
-                group = aff_nbhd[g : g + dims]
-                group_stride = [
-                    max(max(1, abs(off[d])) for off in group)
-                    for d in range(dims)
-                ]
-                for _ in group:
-                    strides.append(list(group_stride))
-            mws_params["strides"] = strides
+        dims = len(aff_nbhd[0]) if aff_nbhd else 3
+        strides = []
+        for g in range(0, n, dims):
+            group = aff_nbhd[g : g + dims]
+            group_stride = [
+                max(max(1, abs(off[d])) for off in group)
+                for d in range(dims)
+            ]
+            for _ in group:
+                strides.append(list(group_stride))
+        mws_params["strides"] = strides
 
         # Default: all channels selected
         mws_params["selected_channels"] = list(range(n))
+
+        # Also sync neighborhood to CC params (for channel selection UI)
+        cc_params = self.seg_params["connected components"]
+        cc_params["neighborhood"] = [list(nb) for nb in aff_nbhd]
+        cc_params["selected_channels"] = list(range(min(3, n)))
 
     def compute_output_shape(self, dimension):
         """Compute output_shape by forward pass with dummy tensor."""
@@ -1830,24 +1857,17 @@ class Widget(QMainWindow):
     def open_seg_options(self):
         """
         Opens a dialog with advanced options for the selected segmentation method.
-        Includes affinity channel selection table for mutex watershed.
+        Includes affinity channel selection table.
         """
         method = self.seg_method_selector.currentText()
         params = self.seg_params[method]
+        is_mws = method == "mutex watershed"
+        is_cc = method == "connected components"
 
-        if method != "mutex watershed":
-            success = self.open_parameter_dialog(
-                title=f"{method.title()} Parameters", params=params
-            )
-            if success:
-                print(f"Updated segmentation parameters for {method}")
-            return
-
-        # Mutex watershed: custom dialog with channel table
         from superqt import QCollapsible
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("Mutex Watershed Parameters")
+        dialog.setWindowTitle(f"{method.title()} Parameters")
         dialog.setMinimumWidth(600)
 
         layout = QVBoxLayout()
@@ -1857,7 +1877,7 @@ class Widget(QMainWindow):
         # --- Affinity channels table ---
         channel_collapsible = QCollapsible("Affinity Channels")
         channel_collapsible.setToolTip(
-            "Select which affinity channels to use for mutex watershed segmentation"
+            "Select which affinity channels to use for segmentation"
         )
         channel_widget = QWidget()
         channel_grid = QGridLayout()
@@ -1867,23 +1887,33 @@ class Widget(QMainWindow):
         neighborhood = params.get("neighborhood", [])
         n = len(neighborhood)
         selected = params.get(
-            "selected_channels", list(range(n))
+            "selected_channels", list(range(min(3, n) if is_cc else n))
         )
         strides = params.get("strides", [])
-        bias = params.get("bias", (-0.4, -0.7))
+        bias = params.get("bias", (-0.4, -0.7) if is_mws else 0.0)
 
-        # Expand bias tuple to per-channel for display
-        if isinstance(bias, (list, tuple)) and len(bias) == 2:
-            per_ch_bias = [bias[0]] * min(3, n) + [bias[1]] * max(
-                0, n - 3
-            )
+        # Expand bias to per-channel for display
+        if is_mws:
+            if isinstance(bias, (list, tuple)) and len(bias) == 2:
+                per_ch_bias = [bias[0]] * min(3, n) + [bias[1]] * max(
+                    0, n - 3
+                )
+            else:
+                per_ch_bias = (
+                    list(bias)
+                    if isinstance(bias, (list, tuple))
+                    else [bias] * n
+                )
         else:
-            per_ch_bias = list(bias) if isinstance(bias, (list, tuple)) else [bias] * n
+            # CC: single bias value applied to all
+            bias_val = float(bias) if not isinstance(bias, (list, tuple)) else 0.0
+            per_ch_bias = [bias_val] * n
 
         # Table header
-        for col, header in enumerate(
-            ["Include", "Offset", "Bias", "Stride"]
-        ):
+        headers = ["Include", "Offset", "Bias"]
+        if is_mws:
+            headers.append("Stride")
+        for col, header in enumerate(headers):
             lbl = QLabel(f"<b>{header}</b>")
             channel_grid.addWidget(lbl, 0, col)
 
@@ -1902,18 +1932,23 @@ class Widget(QMainWindow):
             channel_grid.addWidget(offset_label, row, 1)
 
             bias_edit = QLineEdit()
-            bias_val = per_ch_bias[i] if i < len(per_ch_bias) else -0.5
-            bias_edit.setText(str(bias_val))
+            bv = per_ch_bias[i] if i < len(per_ch_bias) else 0.0
+            bias_edit.setText(str(bv))
             bias_edit.setMaximumWidth(60)
             channel_grid.addWidget(bias_edit, row, 2)
             bias_widgets.append(bias_edit)
 
-            stride_edit = QLineEdit()
-            stride_val = strides[i] if i < len(strides) else [1] * len(offset)
-            stride_edit.setText(str(stride_val))
-            stride_edit.setMaximumWidth(120)
-            channel_grid.addWidget(stride_edit, row, 3)
-            stride_widgets.append(stride_edit)
+            if is_mws:
+                stride_edit = QLineEdit()
+                stride_val = (
+                    strides[i]
+                    if i < len(strides)
+                    else [1] * len(offset)
+                )
+                stride_edit.setText(str(stride_val))
+                stride_edit.setMaximumWidth(120)
+                channel_grid.addWidget(stride_edit, row, 3)
+                stride_widgets.append(stride_edit)
 
             row_labels.append(offset_label)
 
@@ -1923,17 +1958,36 @@ class Widget(QMainWindow):
             bias_widgets[idx].setStyleSheet(
                 f"QLineEdit {{ {style} }}" if style else ""
             )
-            stride_widgets[idx].setStyleSheet(
-                f"QLineEdit {{ {style} }}" if style else ""
-            )
             bias_widgets[idx].setEnabled(checked)
-            stride_widgets[idx].setEnabled(checked)
+            if is_mws and idx < len(stride_widgets):
+                stride_widgets[idx].setStyleSheet(
+                    f"QLineEdit {{ {style} }}" if style else ""
+                )
+                stride_widgets[idx].setEnabled(checked)
+
+        def on_cc_toggle(checked, idx):
+            """For CC: enforce max 3 channels selected."""
+            update_row_style(idx, checked)
+            if checked:
+                num_checked = sum(
+                    cb.isChecked() for cb in channel_checkboxes
+                )
+                if num_checked > 3:
+                    # Uncheck this one back
+                    channel_checkboxes[idx].setChecked(False)
 
         for i, cb in enumerate(channel_checkboxes):
             update_row_style(i, cb.isChecked())
-            cb.toggled.connect(
-                lambda checked, idx=i: update_row_style(idx, checked)
-            )
+            if is_cc:
+                cb.toggled.connect(
+                    lambda checked, idx=i: on_cc_toggle(checked, idx)
+                )
+            else:
+                cb.toggled.connect(
+                    lambda checked, idx=i: update_row_style(
+                        idx, checked
+                    )
+                )
 
         channel_widget.setLayout(channel_grid)
         channel_collapsible.addWidget(channel_widget)
@@ -1943,7 +1997,7 @@ class Widget(QMainWindow):
         # --- Segmentation parameters ---
         seg_collapsible = QCollapsible("Segmentation Parameters")
         seg_collapsible.setToolTip(
-            "Configure mutex watershed algorithm parameters"
+            f"Configure {method} algorithm parameters"
         )
         seg_widget = QWidget()
         seg_grid = QGridLayout()
@@ -1997,42 +2051,54 @@ class Widget(QMainWindow):
                 if cb.isChecked()
             ]
 
-            # Update bias from table
-            new_bias = []
-            for bw in bias_widgets:
-                try:
-                    new_bias.append(float(bw.text()))
-                except ValueError:
-                    new_bias.append(-0.5)
+            if is_mws:
+                # Update bias from table — store as (short, long) tuple
+                # if pattern matches
+                new_bias = []
+                for bw in bias_widgets:
+                    try:
+                        new_bias.append(float(bw.text()))
+                    except ValueError:
+                        new_bias.append(-0.5)
 
-            # Store as (short, long) tuple if first 3 share one
-            # value and rest share another
-            if len(new_bias) >= 3:
-                short = set(new_bias[:3])
-                long = set(new_bias[3:]) if len(new_bias) > 3 else set()
-                if len(short) == 1 and (
-                    len(long) <= 1
-                ):
-                    long_val = (
-                        long.pop() if long else short.pop()
+                if len(new_bias) >= 3:
+                    short = set(new_bias[:3])
+                    long = (
+                        set(new_bias[3:])
+                        if len(new_bias) > 3
+                        else set()
                     )
-                    params["bias"] = (
-                        new_bias[0],
-                        long_val,
-                    )
+                    if len(short) == 1 and len(long) <= 1:
+                        long_val = (
+                            long.pop() if long else short.pop()
+                        )
+                        params["bias"] = (new_bias[0], long_val)
+                    else:
+                        params["bias"] = new_bias
                 else:
                     params["bias"] = new_bias
-            else:
-                params["bias"] = new_bias
 
-            # Update strides from table
-            new_strides = []
-            for sw in stride_widgets:
-                try:
-                    new_strides.append(ast.literal_eval(sw.text()))
-                except (SyntaxError, ValueError):
-                    new_strides.append(sw.text())
-            params["strides"] = new_strides
+                # Update strides from table
+                new_strides = []
+                for sw in stride_widgets:
+                    try:
+                        new_strides.append(
+                            ast.literal_eval(sw.text())
+                        )
+                    except (SyntaxError, ValueError):
+                        new_strides.append(sw.text())
+                params["strides"] = new_strides
+            else:
+                # CC: store single bias value from first selected
+                # channel's bias
+                sel = params["selected_channels"]
+                if sel:
+                    try:
+                        params["bias"] = float(
+                            bias_widgets[sel[0]].text()
+                        )
+                    except ValueError:
+                        params["bias"] = 0.0
 
             # Update other params
             for key, widget in param_widgets.items():
