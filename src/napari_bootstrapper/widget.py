@@ -615,6 +615,7 @@ class Widget(QMainWindow):
         )
 
         self.seg_params = DEFAULT_SEG_PARAMS
+        self.sync_seg_neighborhood()
 
     def set_grid_6(self):
         """
@@ -1382,11 +1383,62 @@ class Widget(QMainWindow):
         self._check_inference_cancelled()
 
         # segment affs
-        self.segmentation = segment_affs(
-            self.affs_3d,
-            method=self.seg_method_selector.currentText(),
-            params=self.seg_params,
-        )
+        method = self.seg_method_selector.currentText()
+        if method == "mutex watershed":
+            mws_params = self.seg_params["mutex watershed"]
+            selected = mws_params.get("selected_channels")
+            nbhd = mws_params["neighborhood"]
+
+            # Expand bias tuple into per-channel list
+            bias = mws_params.get("bias", (-0.4, -0.7))
+            if isinstance(bias, (list, tuple)) and len(bias) == 2:
+                n = len(nbhd)
+                per_ch_bias = [bias[0]] * min(3, n) + [bias[1]] * max(
+                    0, n - 3
+                )
+            else:
+                per_ch_bias = list(bias)
+
+            # Build clean params for segment_affs
+            use_affs = self.affs_3d
+            use_nbhd = nbhd
+            use_bias = per_ch_bias
+            use_strides = mws_params.get("strides")
+
+            if (
+                selected is not None
+                and len(selected) < self.affs_3d.shape[0]
+            ):
+                use_affs = self.affs_3d[selected]
+                use_nbhd = [nbhd[i] for i in selected]
+                use_bias = [per_ch_bias[i] for i in selected]
+                if use_strides:
+                    use_strides = [use_strides[i] for i in selected]
+
+            clean_mws = {
+                k: v
+                for k, v in mws_params.items()
+                if k not in {"selected_channels", "bias",
+                             "neighborhood", "strides"}
+            }
+            clean_mws["neighborhood"] = use_nbhd
+            clean_mws["bias"] = use_bias
+            if use_strides:
+                clean_mws["strides"] = use_strides
+            clean_params = dict(self.seg_params)
+            clean_params["mutex watershed"] = clean_mws
+
+            self.segmentation = segment_affs(
+                use_affs,
+                method=method,
+                params=clean_params,
+            )
+        else:
+            self.segmentation = segment_affs(
+                self.affs_3d,
+                method=method,
+                params=self.seg_params,
+            )
 
         print("Inference complete!")
 
@@ -1628,6 +1680,36 @@ class Widget(QMainWindow):
         dialog.exec_()
         return result[0]
 
+    def sync_seg_neighborhood(self):
+        """Sync seg params neighborhood from 3D model config's aff_neighborhood."""
+        aff_nbhd = self.model_3d_config["task"]["aff_neighborhood"]
+        mws_params = self.seg_params["mutex watershed"]
+        mws_params["neighborhood"] = [list(n) for n in aff_nbhd]
+
+        n = len(aff_nbhd)
+
+        # Set bias as (short_range, long_range) tuple
+        if "bias" not in mws_params:
+            mws_params["bias"] = (-0.4, -0.7)
+
+        # Auto-generate strides from offsets: group by 3 (one per axis),
+        # stride = max abs value per axis across the group
+        if len(mws_params.get("strides", [])) != n:
+            dims = len(aff_nbhd[0]) if aff_nbhd else 3
+            strides = []
+            for g in range(0, n, dims):
+                group = aff_nbhd[g : g + dims]
+                group_stride = [
+                    max(max(1, abs(off[d])) for off in group)
+                    for d in range(dims)
+                ]
+                for _ in group:
+                    strides.append(list(group_stride))
+            mws_params["strides"] = strides
+
+        # Default: all channels selected
+        mws_params["selected_channels"] = list(range(n))
+
     def compute_output_shape(self, dimension):
         """Compute output_shape by forward pass with dummy tensor."""
         from napari_bootstrapper.models.unet import UNet
@@ -1704,11 +1786,25 @@ class Widget(QMainWindow):
             if k != "output_shape"
         }
 
+        # Build readonly params set
+        readonly = {"net.output_shape"}
+
+        # For 3D models that use 2D affs as input, sync and lock
+        # in_aff_neighborhood from the 2D model config
+        if dimension == "3d" and (
+            "from_2d_affs" in model_type
+            or "from_2d_mtlsd" in model_type
+        ):
+            config["task"]["in_aff_neighborhood"] = list(
+                self.model_2d_config["task"]["aff_neighborhood"]
+            )
+            readonly.add("task.in_aff_neighborhood")
+
         success = self.open_parameter_dialog(
             title=f"Advanced {dimension.upper()} Model Configuration",
             params=config,
             param_filter=param_filter,
-            readonly_params={"net.output_shape"},
+            readonly_params=readonly,
         )
 
         if success:
@@ -1720,22 +1816,246 @@ class Widget(QMainWindow):
             }
             if net_before != net_after:
                 self.compute_output_shape(dimension)
+            if dimension == "3d":
+                self.sync_seg_neighborhood()
+            if dimension == "2d":
+                # Sync 3D in_aff_neighborhood if it depends on 2D
+                m3type = self.model_3d_type_selector.currentText()
+                if "from_2d_affs" in m3type or "from_2d_mtlsd" in m3type:
+                    self.model_3d_config["task"][
+                        "in_aff_neighborhood"
+                    ] = list(config["task"]["aff_neighborhood"])
             print(f"Updated {dimension} model configuration:")
 
     def open_seg_options(self):
         """
         Opens a dialog with advanced options for the selected segmentation method.
+        Includes affinity channel selection table for mutex watershed.
         """
         method = self.seg_method_selector.currentText()
-
-        # Get the parameters dictionary for the selected method
         params = self.seg_params[method]
 
-        success = self.open_parameter_dialog(
-            title=f"{method.title()} Parameters", params=params
-        )
+        if method != "mutex watershed":
+            success = self.open_parameter_dialog(
+                title=f"{method.title()} Parameters", params=params
+            )
+            if success:
+                print(f"Updated segmentation parameters for {method}")
+            return
 
-        if success:
+        # Mutex watershed: custom dialog with channel table
+        from superqt import QCollapsible
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Mutex Watershed Parameters")
+        dialog.setMinimumWidth(600)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        # --- Affinity channels table ---
+        channel_collapsible = QCollapsible("Affinity Channels")
+        channel_collapsible.setToolTip(
+            "Select which affinity channels to use for mutex watershed segmentation"
+        )
+        channel_widget = QWidget()
+        channel_grid = QGridLayout()
+        channel_grid.setContentsMargins(4, 2, 4, 2)
+        channel_grid.setSpacing(4)
+
+        neighborhood = params.get("neighborhood", [])
+        n = len(neighborhood)
+        selected = params.get(
+            "selected_channels", list(range(n))
+        )
+        strides = params.get("strides", [])
+        bias = params.get("bias", (-0.4, -0.7))
+
+        # Expand bias tuple to per-channel for display
+        if isinstance(bias, (list, tuple)) and len(bias) == 2:
+            per_ch_bias = [bias[0]] * min(3, n) + [bias[1]] * max(
+                0, n - 3
+            )
+        else:
+            per_ch_bias = list(bias) if isinstance(bias, (list, tuple)) else [bias] * n
+
+        # Table header
+        for col, header in enumerate(
+            ["Include", "Offset", "Bias", "Stride"]
+        ):
+            lbl = QLabel(f"<b>{header}</b>")
+            channel_grid.addWidget(lbl, 0, col)
+
+        channel_checkboxes = []
+        bias_widgets = []
+        stride_widgets = []
+        row_labels = []
+        for i, offset in enumerate(neighborhood):
+            row = i + 1
+            cb = QCheckBox()
+            cb.setChecked(i in selected)
+            channel_grid.addWidget(cb, row, 0)
+            channel_checkboxes.append(cb)
+
+            offset_label = QLabel(str(offset))
+            channel_grid.addWidget(offset_label, row, 1)
+
+            bias_edit = QLineEdit()
+            bias_val = per_ch_bias[i] if i < len(per_ch_bias) else -0.5
+            bias_edit.setText(str(bias_val))
+            bias_edit.setMaximumWidth(60)
+            channel_grid.addWidget(bias_edit, row, 2)
+            bias_widgets.append(bias_edit)
+
+            stride_edit = QLineEdit()
+            stride_val = strides[i] if i < len(strides) else [1] * len(offset)
+            stride_edit.setText(str(stride_val))
+            stride_edit.setMaximumWidth(120)
+            channel_grid.addWidget(stride_edit, row, 3)
+            stride_widgets.append(stride_edit)
+
+            row_labels.append(offset_label)
+
+        def update_row_style(idx, checked):
+            style = "" if checked else "color: #666666;"
+            row_labels[idx].setStyleSheet(style)
+            bias_widgets[idx].setStyleSheet(
+                f"QLineEdit {{ {style} }}" if style else ""
+            )
+            stride_widgets[idx].setStyleSheet(
+                f"QLineEdit {{ {style} }}" if style else ""
+            )
+            bias_widgets[idx].setEnabled(checked)
+            stride_widgets[idx].setEnabled(checked)
+
+        for i, cb in enumerate(channel_checkboxes):
+            update_row_style(i, cb.isChecked())
+            cb.toggled.connect(
+                lambda checked, idx=i: update_row_style(idx, checked)
+            )
+
+        channel_widget.setLayout(channel_grid)
+        channel_collapsible.addWidget(channel_widget)
+        channel_collapsible.expand()
+        layout.addWidget(channel_collapsible)
+
+        # --- Segmentation parameters ---
+        seg_collapsible = QCollapsible("Segmentation Parameters")
+        seg_collapsible.setToolTip(
+            "Configure mutex watershed algorithm parameters"
+        )
+        seg_widget = QWidget()
+        seg_grid = QGridLayout()
+        seg_grid.setContentsMargins(4, 2, 4, 2)
+        seg_grid.setSpacing(4)
+
+        exclude_keys = {
+            "neighborhood",
+            "selected_channels",
+            "strides",
+            "bias",
+        }
+
+        param_widgets = {}
+        row = 0
+        for key, value in params.items():
+            if key in exclude_keys:
+                continue
+            label_text = key.replace("_", " ").title()
+            seg_grid.addWidget(QLabel(label_text), row, 0)
+            if isinstance(value, bool):
+                w = QCheckBox()
+                w.setChecked(value)
+            else:
+                w = QLineEdit()
+                w.setText(str(value))
+            seg_grid.addWidget(w, row, 1)
+            param_widgets[key] = w
+            row += 1
+
+        seg_widget.setLayout(seg_grid)
+        seg_collapsible.addWidget(seg_widget)
+        layout.addWidget(seg_collapsible)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        )
+        layout.addWidget(button_box)
+        layout.setSizeConstraint(QVBoxLayout.SetMinAndMaxSize)
+        dialog.setLayout(layout)
+
+        result = [False]
+
+        def on_ok():
+            import ast
+
+            # Update selected channels
+            params["selected_channels"] = [
+                i
+                for i, cb in enumerate(channel_checkboxes)
+                if cb.isChecked()
+            ]
+
+            # Update bias from table
+            new_bias = []
+            for bw in bias_widgets:
+                try:
+                    new_bias.append(float(bw.text()))
+                except ValueError:
+                    new_bias.append(-0.5)
+
+            # Store as (short, long) tuple if first 3 share one
+            # value and rest share another
+            if len(new_bias) >= 3:
+                short = set(new_bias[:3])
+                long = set(new_bias[3:]) if len(new_bias) > 3 else set()
+                if len(short) == 1 and (
+                    len(long) <= 1
+                ):
+                    long_val = (
+                        long.pop() if long else short.pop()
+                    )
+                    params["bias"] = (
+                        new_bias[0],
+                        long_val,
+                    )
+                else:
+                    params["bias"] = new_bias
+            else:
+                params["bias"] = new_bias
+
+            # Update strides from table
+            new_strides = []
+            for sw in stride_widgets:
+                try:
+                    new_strides.append(ast.literal_eval(sw.text()))
+                except (SyntaxError, ValueError):
+                    new_strides.append(sw.text())
+            params["strides"] = new_strides
+
+            # Update other params
+            for key, widget in param_widgets.items():
+                if isinstance(widget, QCheckBox):
+                    params[key] = widget.isChecked()
+                else:
+                    value = widget.text()
+                    if value.lower() == "none":
+                        params[key] = None
+                    else:
+                        try:
+                            params[key] = ast.literal_eval(value)
+                        except (SyntaxError, ValueError):
+                            params[key] = value
+
+            result[0] = True
+            dialog.accept()
+
+        button_box.accepted.connect(on_ok)
+        button_box.rejected.connect(dialog.reject)
+        dialog.exec_()
+
+        if result[0]:
             print(f"Updated segmentation parameters for {method}")
 
     def load_weights(self, dimension):
@@ -1785,6 +2105,9 @@ class Widget(QMainWindow):
                             f"'{checkpoint_type}' not found in "
                             f"selector options."
                         )
+
+        if dimension == "3d":
+            self.sync_seg_neighborhood()
 
         getattr(self, f"start_{dimension}_training_button").setEnabled(True)
         getattr(self, f"save_{dimension}_weights_button").setEnabled(True)
