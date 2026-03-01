@@ -893,6 +893,12 @@ class Widget(QMainWindow):
                 ).state_dict(),
                 "iterations": getattr(self, f"iterations_{dimension}"),
                 "losses": getattr(self, f"losses_{dimension}"),
+                "model_type": getattr(
+                    self, f"model_{dimension}_type_selector"
+                ).currentText(),
+                "model_config": getattr(
+                    self, f"model_{dimension}_config"
+                ),
             }
             checkpoint_file_name = (
                 self.tmp_dir
@@ -1025,7 +1031,20 @@ class Widget(QMainWindow):
         # Load model if needed
         if model_needs_reload and hasattr(self, checkpoint_attr):
             checkpoint_path = getattr(self, checkpoint_attr)
-            model_config = getattr(self, model_config_attr)
+
+            # Peek at checkpoint for config before creating model
+            checkpoint_state = torch.load(
+                checkpoint_path, map_location=self.device
+            )
+            if "model_config" in checkpoint_state:
+                model_config = checkpoint_state["model_config"]
+                setattr(self, model_config_attr, model_config)
+                print(
+                    f"Using {dimension.upper()} model config "
+                    f"from checkpoint."
+                )
+            else:
+                model_config = getattr(self, model_config_attr)
 
             # Get the right model constructor function
             model_func = get_2d_model if dimension == "2d" else get_3d_model
@@ -1622,8 +1641,35 @@ class Widget(QMainWindow):
             caption=f"Load {dimension.upper()} Model Weights"
         )
 
+        if not file_name:
+            return
+
         setattr(self, f"pretrained_{dimension}_model_checkpoint", file_name)
         self.remove_inference_attributes(dimension)
+
+        # Peek at checkpoint for model config and type
+        state = torch.load(file_name, map_location="cpu")
+        if isinstance(state, dict):
+            if "model_config" in state:
+                setattr(
+                    self,
+                    f"model_{dimension}_config",
+                    state["model_config"],
+                )
+                print(
+                    f"Loaded {dimension.upper()} model config "
+                    f"from checkpoint."
+                )
+            if "model_type" in state:
+                current_type = getattr(
+                    self, f"model_{dimension}_type_selector"
+                ).currentText()
+                if state["model_type"] != current_type:
+                    print(
+                        f"WARNING: Checkpoint model type "
+                        f"'{state['model_type']}' differs from "
+                        f"current selection '{current_type}'."
+                    )
 
         getattr(self, f"start_{dimension}_training_button").setEnabled(True)
         getattr(self, f"save_{dimension}_weights_button").setEnabled(True)
@@ -1706,44 +1752,146 @@ class Widget(QMainWindow):
 
         # Load the state dict
         state = torch.load(model_checkpoint, map_location=self.device)
-        state = state.get('state_dict', state.get('model_state_dict', state))
-        state = {k.removeprefix('model.'): v for k, v in state.items()}
 
-        model = getattr(self, f"model_{dimension}")
-
+        # Determine if this is a full checkpoint (with model_state_dict key)
+        # or a raw state dict (e.g. from external sources)
         if "model_state_dict" in state:
-            model.load_state_dict(state["model_state_dict"], strict=True)
+            # Full checkpoint format (our own saves)
+            weights = state["model_state_dict"]
+        elif "state_dict" in state:
+            # External checkpoint format
+            weights = state["state_dict"]
+            weights = {
+                k.removeprefix("model."): v
+                for k, v in weights.items()
+            }
+        else:
+            # Raw state dict
+            weights = {
+                k.removeprefix("model."): v
+                for k, v in state.items()
+            }
 
-            if training:
-                if "optim_state_dict" in state:
-                    getattr(self, f"optimizer_{dimension}").load_state_dict(
-                        state["optim_state_dict"]
-                    )
+        # If checkpoint contains model config, apply it
+        if "model_config" in state:
+            current_config = getattr(
+                self, f"model_{dimension}_config"
+            )
+            checkpoint_config = state["model_config"]
 
-                # If training state is available, restore it
-                if all(k in state for k in ["iterations", "losses"]):
-                    setattr(
-                        self, f"iterations_{dimension}", state["iterations"]
+            if (
+                checkpoint_config["net"]
+                != current_config["net"]
+            ):
+                print(
+                    f"WARNING: {dimension.upper()} model config "
+                    f"in checkpoint differs from current config. "
+                    f"Using checkpoint config to match weights."
+                )
+                setattr(
+                    self,
+                    f"model_{dimension}_config",
+                    checkpoint_config,
+                )
+
+                # Recreate model with checkpoint config
+                model_type = state.get(
+                    "model_type",
+                    getattr(
+                        self,
+                        f"model_{dimension}_type_selector",
+                    ).currentText(),
+                )
+                model_func = (
+                    get_2d_model
+                    if dimension == "2d"
+                    else get_3d_model
+                )
+                # Infer num_channels from the first conv
+                # weight in the checkpoint weights dict
+                first_weight = next(
+                    v
+                    for k, v in weights.items()
+                    if "weight" in k and v.ndim >= 3
+                )
+                num_channels = first_weight.shape[1]
+
+                model = model_func(
+                    model_type=model_type,
+                    num_channels=num_channels,
+                    **checkpoint_config["net"],
+                    **checkpoint_config["task"],
+                )
+                setattr(
+                    self,
+                    f"model_{dimension}",
+                    model.to(self.device),
+                )
+
+                # Recreate optimizer for the new model
+                if training and hasattr(
+                    self, f"optimizer_{dimension}"
+                ):
+                    lr = checkpoint_config.get(
+                        "learning_rate",
+                        current_config.get(
+                            "learning_rate", 1e-4
+                        ),
                     )
-                    setattr(self, f"losses_{dimension}", state["losses"])
                     setattr(
                         self,
-                        f"start_iteration_{dimension}",
-                        state["iterations"][-1] + 1,
+                        f"optimizer_{dimension}",
+                        torch.optim.Adam(
+                            model.parameters(), lr=lr
+                        ),
                     )
-                    getattr(self, f"losses_{dimension}_widget").clear()
-                    getattr(self, f"losses_{dimension}_widget").plot(
-                        state["iterations"], state["losses"]
-                    )
-                    getattr(self, f"losses_{dimension}_widget").show()
-                else:
-                    setattr(self, f"losses_{dimension}", [])
-                    setattr(self, f"iterations_{dimension}", [])
-                    setattr(self, f"start_iteration_{dimension}", 0)
-                    getattr(self, f"losses_{dimension}_widget").clear()
+            else:
+                print(
+                    f"{dimension.upper()} model config in "
+                    f"checkpoint matches current config."
+                )
 
-        else:
-            model.load_state_dict(state, strict=True)
+        if "model_type" in state:
+            current_type = getattr(
+                self, f"model_{dimension}_type_selector"
+            ).currentText()
+            if state["model_type"] != current_type:
+                print(
+                    f"WARNING: Checkpoint model type "
+                    f"'{state['model_type']}' differs from "
+                    f"current selection '{current_type}'."
+                )
+
+        model = getattr(self, f"model_{dimension}")
+        model.load_state_dict(weights, strict=True)
+
+        if training:
+            if "optim_state_dict" in state:
+                getattr(self, f"optimizer_{dimension}").load_state_dict(
+                    state["optim_state_dict"]
+                )
+
+            # If training state is available, restore it
+            if all(k in state for k in ["iterations", "losses"]):
+                setattr(
+                    self, f"iterations_{dimension}", state["iterations"]
+                )
+                setattr(self, f"losses_{dimension}", state["losses"])
+                setattr(
+                    self,
+                    f"start_iteration_{dimension}",
+                    state["iterations"][-1] + 1,
+                )
+                getattr(self, f"losses_{dimension}_widget").clear()
+                getattr(self, f"losses_{dimension}_widget").plot(
+                    state["iterations"], state["losses"]
+                )
+                getattr(self, f"losses_{dimension}_widget").show()
+            else:
+                setattr(self, f"losses_{dimension}", [])
+                setattr(self, f"iterations_{dimension}", [])
+                setattr(self, f"start_iteration_{dimension}", 0)
+                getattr(self, f"losses_{dimension}_widget").clear()
 
         # Set the model attribute
         setattr(self, f"model_{dimension}", model.to(self.device))
@@ -1806,6 +1954,12 @@ class Widget(QMainWindow):
                 ).state_dict(),
                 "iterations": getattr(self, f"iterations_{dimension}"),
                 "losses": getattr(self, f"losses_{dimension}"),
+                "model_type": getattr(
+                    self, f"model_{dimension}_type_selector"
+                ).currentText(),
+                "model_config": getattr(
+                    self, f"model_{dimension}_config"
+                ),
             }
             torch.save(state, checkpoint_file_name)
             print(
