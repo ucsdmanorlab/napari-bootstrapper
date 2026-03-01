@@ -12,21 +12,9 @@ contributions:
     - id: napari-bootstrapper.make_fluo_c2dl_huh7_sample_data
       python_name: napari_bootstrapper:make_fluo_c2dl_huh7_sample_data
       title: fluo_c2dl_huh7
-    - id: napari-bootstrapper.merge_labels
-      title: Create Merge Labels
-      python_name: napari_bootstrapper.post._merge_split_widget:merge_labels
-    - id: napari-bootstrapper.delete_labels
-      title: Create Delete Labels
-      python_name: napari_bootstrapper.post._merge_split_widget:delete_labels
-    - id: napari-bootstrapper.morph_labels
-      title: Create Morph Labels
-      python_name: napari_bootstrapper.post._merge_split_widget:morph_labels
-    - id: napari-bootstrapper.split_labels
-      title: Create Split Labels
-      python_name: napari_bootstrapper.post._merge_split_widget:split_labels
-    - id: napari-bootstrapper.filter_labels
-      title: Create Filter Labels
-      python_name: napari_bootstrapper.post._merge_split_widget:filter_labels
+    - id: napari-bootstrapper.proofreading
+      title: Create Proofreading
+      python_name: napari_bootstrapper.post._merge_split_widget:ProofreadingWidget
     - id: napari-bootstrapper.Widget
       python_name: napari_bootstrapper.widget:Widget
       title: Bootstrapper
@@ -40,13 +28,5 @@ contributions:
   widgets:
     - command: napari-bootstrapper.Widget
       display_name: Bootstrapper
-    - command: napari-bootstrapper.delete_labels
-      display_name: Delete Labels
-    - command: napari-bootstrapper.merge_labels
-      display_name: Merge Labels
-    - command: napari-bootstrapper.split_labels
-      display_name: Split Labels
-    - command: napari-bootstrapper.morph_labels
-      display_name: Morph Labels
-    - command: napari-bootstrapper.filter_labels
-      display_name: Filter Labels
+    - command: napari-bootstrapper.proofreading
+      display_name: Proofreading

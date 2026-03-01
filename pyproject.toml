@@ -39,6 +39,9 @@ dependencies = [
     "tqdm",
     "lsds",
     "mwatershed",
+    "fastmorph[spherical]",
+    "connected-components-3d",
+    "fastremap",
 ]
 
 [project.optional-dependencies]
