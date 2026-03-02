@@ -598,10 +598,18 @@ class ProofreadingWidget(QMainWindow):
         morph_op_grid = QGridLayout()
         self.morph_op_group = QButtonGroup(self)
         self.morph_radios = {}
+        morph_tooltips = {
+            "Dilate": "Dilate foreground labels",
+            "Erode": "Erode foreground labels",
+            "Open": "Morphological opening (erode then dilate)",
+            "Close": "Morphological closing (dilate then erode)",
+            "Fill holes": "Fill holes in topologically closed objects (github.com/seung-lab/fastmorph)",
+        }
         for i, op in enumerate(
             ["Dilate", "Erode", "Open", "Close", "Fill holes"]
         ):
             rb = QRadioButton(op)
+            rb.setToolTip(morph_tooltips[op])
             self.morph_op_group.addButton(rb)
             self.morph_radios[op] = rb
             morph_op_grid.addWidget(rb, 0, i)
@@ -648,7 +656,15 @@ class ProofreadingWidget(QMainWindow):
         fill_ver_grid = QGridLayout()
         self.fill_ver_group = QButtonGroup(self)
         self.fill_v1_radio = QRadioButton("v1")
+        self.fill_v1_radio.setToolTip(
+            "Iterative hole filling"
+            " (see github.com/seung-lab/fastmorph)"
+        )
         self.fill_v2_radio = QRadioButton("v2")
+        self.fill_v2_radio.setToolTip(
+            "Threshold-based hole filling"
+            " (see github.com/seung-lab/fastmorph)"
+        )
         self.fill_ver_group.addButton(self.fill_v1_radio)
         self.fill_ver_group.addButton(self.fill_v2_radio)
         self.fill_v1_radio.setChecked(True)
@@ -662,8 +678,17 @@ class ProofreadingWidget(QMainWindow):
         v1_grid = QGridLayout()
         v1_grid.setContentsMargins(4, 2, 4, 2)
         self.morph_closing_cb = QCheckBox("Morphological closing")
+        self.morph_closing_cb.setToolTip(
+            "Perform a dilation first, then erode at end of hole filling"
+        )
         self.remove_enclosed_cb = QCheckBox("Remove enclosed")
+        self.remove_enclosed_cb.setToolTip(
+            "If one label totally encloses another, remove the interior label"
+        )
         self.fix_borders_v1_cb = QCheckBox("Fix borders")
+        self.fix_borders_v1_cb.setToolTip(
+            "Run 2D fill along image edges on each binary image"
+        )
         v1_grid.addWidget(self.morph_closing_cb, 0, 0)
         v1_grid.addWidget(self.remove_enclosed_cb, 1, 0)
         v1_grid.addWidget(self.fix_borders_v1_cb, 2, 0)
@@ -675,6 +700,9 @@ class ProofreadingWidget(QMainWindow):
         v2_grid = QGridLayout()
         v2_grid.setContentsMargins(4, 2, 4, 2)
         self.fix_borders_v2_cb = QCheckBox("Fix borders")
+        self.fix_borders_v2_cb.setToolTip(
+            "Along each image edge, try filling each label as binary"
+        )
         v2_grid.addWidget(QLabel("Merge threshold"), 0, 0)
         self.merge_threshold_slider = QSlider(Qt.Horizontal)
         self.merge_threshold_slider.setMinimum(0)
@@ -710,8 +738,16 @@ class ProofreadingWidget(QMainWindow):
         edit_op_grid = QGridLayout()
         self.edit_op_group = QButtonGroup(self)
         self.edit_radios = {}
+        edit_tooltips = {
+            "Merge": "Combine selected labels into one"
+            " (uses selected label or min ID)",
+            "Split": "Split a label using watershed"
+            " — place points as markers",
+            "Delete": "Remove selected labels (set to 0)",
+        }
         for i, op in enumerate(["Merge", "Split", "Delete"]):
             rb = QRadioButton(op)
+            rb.setToolTip(edit_tooltips[op])
             self.edit_op_group.addButton(rb)
             self.edit_radios[op] = rb
             edit_op_grid.addWidget(rb, 0, i)
@@ -746,10 +782,17 @@ class ProofreadingWidget(QMainWindow):
         split_grid.addWidget(self.points_as_markers_cb, 1, 0, 1, 3)
 
         self.new_label_cb = QCheckBox("Specify new label IDs")
+        self.new_label_cb.setToolTip(
+            "Assign specific label IDs to split fragments"
+            " instead of auto-incrementing"
+        )
         split_grid.addWidget(self.new_label_cb, 2, 0, 1, 2)
 
         self.start_label_input = QLineEdit()
         self.start_label_input.setPlaceholderText("Start from...")
+        self.start_label_input.setToolTip(
+            "Starting label ID for split fragments (e.g. 100)"
+        )
         self.start_label_input.setEnabled(False)
         split_grid.addWidget(self.start_label_input, 2, 2)
         self.new_label_cb.toggled.connect(

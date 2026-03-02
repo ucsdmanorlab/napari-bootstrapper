@@ -163,6 +163,10 @@ class Widget(QMainWindow):
 
     def show_hide_channels_dim(self):
         if self.raw_selector.currentText() == "":
+            self.channels_dim = None
+            self.channels_dim_combo_box.setEnabled(False)
+            self.channels_dim_combo_box.hide()
+            self.channels_dim_label.hide()
             return
 
         raw_layer = self.viewer.layers[self.raw_selector.currentText()]
@@ -236,6 +240,9 @@ class Widget(QMainWindow):
         device_label.setText("Device")
         device_label.setToolTip("Select the device for training and inference")
         self.device_combo_box = QComboBox(self)
+        self.device_combo_box.setToolTip(
+            "Select the device for training and inference"
+        )
         self.device_combo_box.addItem("cpu")
         if torch.cuda.is_available():
             self.device_combo_box.addItem("cuda:0")
@@ -264,6 +271,9 @@ class Widget(QMainWindow):
         raw_label.setText("Image layer")
         raw_label.setToolTip("Select the image layer to train on")
         self.raw_selector = QComboBox(self)
+        self.raw_selector.setToolTip(
+            "Select the image layer to train on"
+        )
         for layer in self.viewer.layers:
             if isinstance(layer, Image):
                 self.raw_selector.addItem(f"{layer}")
@@ -275,6 +285,10 @@ class Widget(QMainWindow):
             "Specify the channels dimension of the image data since the image layer has 4 dimensions (for example, DHWC -> 3, CDHW -> 0)"
         )
         self.channels_dim_combo_box = QComboBox(self)
+        self.channels_dim_combo_box.setToolTip(
+            "Specify which dimension is channels"
+            " (e.g. DHWC -> 3, CDHW -> 0)"
+        )
         self.channels_dim_combo_box.addItem("0")
         self.channels_dim_combo_box.addItem("1")
         self.channels_dim_combo_box.addItem("2")
@@ -296,6 +310,9 @@ class Widget(QMainWindow):
         labels_label.setText("Labels layer")
         labels_label.setToolTip("Select the labels layer to use for training")
         self.labels_selector = QComboBox(self)
+        self.labels_selector.setToolTip(
+            "Select the labels layer to use for training"
+        )
         for layer in self.viewer.layers:
             if isinstance(layer, Labels):
                 self.labels_selector.addItem(f"{layer}")
@@ -313,6 +330,9 @@ class Widget(QMainWindow):
             "Select the mask layer to use for training (loss is computed only where mask is 1)"
         )
         self.mask_selector = QComboBox(self)
+        self.mask_selector.setToolTip(
+            "Select the mask layer (loss computed only where mask is 1)"
+        )
         for layer in self.viewer.layers:
             if isinstance(layer, Labels):
                 self.mask_selector.addItem(f"{layer}")
@@ -323,6 +343,11 @@ class Widget(QMainWindow):
             "Select the task (output) for 2D model: 2D affs (affinity maps), 2D lsd (local shape descriptors), or 2D mtlsd (multi-task: lsd and affs)"
         )
         self.model_2d_type_selector = QComboBox(self)
+        self.model_2d_type_selector.setToolTip(
+            "2D model task: affs (affinities),"
+            " lsd (local shape descriptors),"
+            " or mtlsd (multi-task, both)"
+        )
         self.model_2d_type_selector.addItems(["2d_affs", "2d_lsd", "2d_mtlsd"])
         self.model_2d_type_selector.currentTextChanged.connect(
             self.update_3d_model_type_selector
@@ -453,6 +478,10 @@ class Widget(QMainWindow):
         )
 
         self.model_3d_type_selector = QComboBox(self)
+        self.model_3d_type_selector.setToolTip(
+            "3D model input type"
+            " (auto-inferred unless 2D task is mtlsd)"
+        )
         self.model_3d_type_selector.addItems(
             [
                 "3d_affs_from_2d_affs",
@@ -576,6 +605,9 @@ class Widget(QMainWindow):
             "Select the segmentation algorithm to use on output 3D affinities"
         )
         self.seg_method_selector = QComboBox()
+        self.seg_method_selector.setToolTip(
+            "Segmentation algorithm for output 3D affinities"
+        )
         self.seg_method_selector.addItems(
             [
                 "mutex watershed",
@@ -597,6 +629,9 @@ class Widget(QMainWindow):
             "Run the complete pipeline: 2D model inference → 3D model inference → segmentation"
         )
         self.stop_inference_button = QPushButton("Stop")
+        self.stop_inference_button.setToolTip(
+            "Stop the current inference pipeline"
+        )
         self.stop_inference_button.setEnabled(False)
 
         self.grid_5.addWidget(seg_heading, 0, 0, 1, 2)
@@ -637,6 +672,7 @@ class Widget(QMainWindow):
 
         self.device_combo_box.setEnabled(False)
         self.raw_selector.setEnabled(False)
+        self.channels_dim_combo_box.setEnabled(False)
         self.labels_selector.setEnabled(False)
         self.make_mask_button.setEnabled(False)
         self.mask_selector.setEnabled(False)
@@ -869,6 +905,7 @@ class Widget(QMainWindow):
         self.labels_selector.setEnabled(True)
         self.make_mask_button.setEnabled(True)
         self.mask_selector.setEnabled(True)
+        self.show_hide_channels_dim()
 
         self.model_2d_type_selector.setEnabled(True)
         self.model_3d_type_selector.setEnabled(True)
@@ -924,6 +961,7 @@ class Widget(QMainWindow):
 
         self.device_combo_box.setEnabled(False)
         self.raw_selector.setEnabled(False)
+        self.channels_dim_combo_box.setEnabled(False)
         self.labels_selector.setEnabled(False)
         self.make_mask_button.setEnabled(False)
         self.mask_selector.setEnabled(False)
@@ -974,6 +1012,7 @@ class Widget(QMainWindow):
         self.labels_selector.setEnabled(True)
         self.make_mask_button.setEnabled(True)
         self.mask_selector.setEnabled(True)
+        self.show_hide_channels_dim()
 
         self.train_2d_model_from_scratch_checkbox.setEnabled(True)
         self.train_3d_model_from_scratch_checkbox.setEnabled(True)
@@ -1909,13 +1948,16 @@ class Widget(QMainWindow):
             bias_val = float(bias) if not isinstance(bias, (list, tuple)) else 0.0
             per_ch_bias = [bias_val] * n
 
-        # Table header
-        headers = ["Include", "Offset", "Bias"]
+        # Table header: Offset, Bias, [Stride], Include
+        headers = ["Offset", "Bias"]
         if is_mws:
             headers.append("Stride")
+        headers.append("Include")
         for col, header in enumerate(headers):
             lbl = QLabel(f"<b>{header}</b>")
             channel_grid.addWidget(lbl, 0, col)
+
+        include_col = len(headers) - 1
 
         channel_checkboxes = []
         bias_widgets = []
@@ -1923,20 +1965,19 @@ class Widget(QMainWindow):
         row_labels = []
         for i, offset in enumerate(neighborhood):
             row = i + 1
-            cb = QCheckBox()
-            cb.setChecked(i in selected)
-            channel_grid.addWidget(cb, row, 0)
-            channel_checkboxes.append(cb)
+            col = 0
 
             offset_label = QLabel(str(offset))
-            channel_grid.addWidget(offset_label, row, 1)
+            channel_grid.addWidget(offset_label, row, col)
+            col += 1
 
             bias_edit = QLineEdit()
             bv = per_ch_bias[i] if i < len(per_ch_bias) else 0.0
             bias_edit.setText(str(bv))
             bias_edit.setMaximumWidth(60)
-            channel_grid.addWidget(bias_edit, row, 2)
+            channel_grid.addWidget(bias_edit, row, col)
             bias_widgets.append(bias_edit)
+            col += 1
 
             if is_mws:
                 stride_edit = QLineEdit()
@@ -1947,8 +1988,13 @@ class Widget(QMainWindow):
                 )
                 stride_edit.setText(str(stride_val))
                 stride_edit.setMaximumWidth(120)
-                channel_grid.addWidget(stride_edit, row, 3)
+                channel_grid.addWidget(stride_edit, row, col)
                 stride_widgets.append(stride_edit)
+
+            cb = QCheckBox()
+            cb.setChecked(i in selected)
+            channel_grid.addWidget(cb, row, include_col)
+            channel_checkboxes.append(cb)
 
             row_labels.append(offset_label)
 
