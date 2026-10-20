@@ -43,7 +43,9 @@ def mwatershed_from_affinities(
 
     # filter fragments
     if filter_fragments > 0:
-        filter_avg_fragments(affs, fragments_data, filter_fragments)
+        fragments_data = filter_avg_fragments(
+            affs, fragments_data, filter_fragments
+        )
 
     # remove small debris
     if remove_debris > 0:
@@ -71,9 +73,11 @@ def filter_avg_fragments(affs, fragments_data, filter_value):
         if mean < filter_value:
             filtered_fragments.append(fragment)
 
+    if not filtered_fragments:
+        return fragments_data
     filtered_fragments = np.array(filtered_fragments, dtype=fragments_data.dtype)
     replace = np.zeros_like(filtered_fragments)
-    replace_values(fragments_data, filtered_fragments, replace)
+    return replace_values(fragments_data, filtered_fragments, replace)
 
 
 def get_seeds(

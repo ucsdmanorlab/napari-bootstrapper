@@ -124,10 +124,16 @@ class CreateLabels(gp.BatchProvider):
 
             for z in range(labels.shape[0]):
                 dilations = random.randint(1, 10)
+                structure = random.choice(structs)
+                # Large footprints corrupt SciPy's sparse dilation buffers.
+                brute_force = any(
+                    s > n for s, n in zip(structure.shape, labels[z].shape)
+                )
                 dilated = binary_dilation(
                     labels[z],
-                    structure=random.choice(structs),
+                    structure=structure,
                     iterations=dilations,
+                    brute_force=brute_force,
                 )
                 labels[z] = dilated.astype(labels.dtype)
 

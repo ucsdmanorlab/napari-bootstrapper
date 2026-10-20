@@ -1,136 +1,120 @@
 import gunpowder as gp
 import numpy as np
-from lsd.train import LsdExtractor
-from lsd.train.gp import AddLocalShapeDescriptor
+from lsd_lite import get_lsds
 
 
-class Add2DLSDs(AddLocalShapeDescriptor):
-    """Create a 2D local segmentation shape discriptor to each voxel.
+def compute_lsds(segmentation, sigma, voxel_size, downsample, crop):
+    descriptor = get_lsds(
+        _pad_high_end_to_downsample_multiple(segmentation, downsample),
+        sigma,
+        voxel_size,
+        labels=np.unique(segmentation[crop]),
+        downsample=downsample,
+    )[(slice(None),) + crop]
+    _set_old_lsd_mass_placeholder(descriptor, segmentation[crop])
+    return descriptor
 
-    Args:
 
-        segmentation (:class:`ArrayKey`): The array storing the segmentation
-            to use.
+def _pad_high_end_to_downsample_multiple(segmentation, downsample):
+    return np.pad(
+        segmentation, [(0, -s % downsample) for s in segmentation.shape]
+    )
 
-        descriptor (:class:`ArrayKey`): The array of the shape descriptor to
-            generate.
 
-        lsds_mask (:class:`ArrayKey`, optional): The array to store a binary mask
-            the size of the descriptors. Background voxels, which do not have a
-            descriptor, will be set to 0. This can be used as a loss scale
-            during training, such that background is ignored.
+def _set_old_lsd_mass_placeholder(descriptor, segmentation):
+    descriptor[-1][(segmentation != 0) & (descriptor[-1] == 0)] = 1.0
 
-        labels_mask (:class:`ArrayKey`, optional): The array to use as a mask
-            for labels. Lsds connecting at least one masked out label will be
-            masked out in lsds_mask.
 
-        unlabelled (:class:`ArrayKey`, optional): A binary array to indicate
-            unlabelled areas with 0. Lsds from labelled to unlabelled voxels are set
-            to 0, lsds between unlabelled voxels are masked out (they will not be
-            used for training).
+class Add2DLSDs(gp.BatchFilter):
+    """Compute six Gaussian LSD channels per section, with sigma in world units.
 
-        sigma (float or tuple of float): The context to consider to compute
-            the shape descriptor in world units. This will be the standard
-            deviation of a Gaussian kernel or the radius of the sphere.
-
-        mode (string): Either ``gaussian`` or ``sphere``. Specifies how to
-            accumulate local statistics: ``gaussian`` uses Gaussian convolution
-            to compute a weighed average of statistics inside an object.
-            ``sphere`` accumulates values in a sphere.
-
-        components (string, optional): The components of the local shape descriptors to
-            compute and return. Should be a string of integers chosen from 0 through
-            6 (if 2D), in order. Example: "345". Defaults to all components.
-
-            Component string lookup, where example component : "2D axes"
-
-                mean offset (mean) : "01"
-                orthogonal covariance (ortho) : "23"
-                diagonal covariance (diag) : "4"
-                size : "5"
-
-            Example combinations:
-
-                diag + size : "45"
-                mean + diag + size : "0145"
-                mean + ortho + diag : "01234"
-                ortho + diag : "234"
-
-        downsample (int, optional): Downsample the segmentation mask to extract
-            the statistics with the given factore. Default is 1 (no
-            downsampling).
+    The loss mask excludes background and zeros in labels_mask or unlabelled.
     """
 
-    def __init__(self, segmentation, descriptor, *args, **kwargs):
-
-        super().__init__(segmentation, descriptor, *args, **kwargs)
-
-        self.extractor = LsdExtractor(
-            self.sigma[1:], self.mode, self.downsample
+    def __init__(
+        self,
+        segmentation,
+        descriptor,
+        lsds_mask=None,
+        labels_mask=None,
+        unlabelled=None,
+        sigma=5.0,
+        downsample=1,
+    ):
+        self.segmentation = segmentation
+        self.descriptor = descriptor
+        self.lsds_mask = lsds_mask
+        self.labels_mask = labels_mask
+        self.unlabelled = unlabelled
+        self.sigma = (
+            tuple(sigma)
+            if isinstance(sigma, (tuple, list))
+            else (0, sigma, sigma)
         )
+        self.downsample = downsample
+
+    def setup(self):
+        spec = self.spec[self.segmentation].copy()
+        spec.dtype = np.float32
+        self.voxel_size = spec.voxel_size
+        self.context = tuple(s * 3 for s in self.sigma)
+        self.provides(self.descriptor, spec)
+        if self.lsds_mask:
+            self.provides(self.lsds_mask, spec.copy())
+
+    def prepare(self, request):
+        deps = gp.BatchRequest()
+        if self.descriptor not in request:
+            return deps
+
+        context_roi = request[self.descriptor].roi.grow(
+            self.context, self.context
+        )
+        context_roi = context_roi.snap_to_grid(self.voxel_size, mode="shrink")
+        if self.segmentation in request:
+            context_roi = context_roi.union(request[self.segmentation].roi)
+        deps[self.segmentation] = request[self.descriptor].copy()
+        deps[self.segmentation].roi = context_roi
+        for mask in (self.labels_mask, self.unlabelled):
+            if mask:
+                deps[mask] = deps[self.segmentation].copy()
+        return deps
 
     def process(self, batch, request):
+        if self.descriptor not in request:
+            return
 
-        labels = batch[self.segmentation].data
+        segmentation = batch[self.segmentation]
+        descriptor_roi = request[self.descriptor].roi
+        crop = (
+            (descriptor_roi - segmentation.spec.roi.offset) / self.voxel_size
+        ).to_slices()
+        descriptor = self._descriptor(segmentation.data, crop)
+        spec = self.spec[self.descriptor].copy()
+        spec.roi = descriptor_roi.copy()
+        outputs = gp.Batch()
+        outputs[self.descriptor] = gp.Array(descriptor, spec)
 
-        spec = batch[self.segmentation].spec.copy()
-
-        spec.dtype = np.float32
-
-        descriptor = np.zeros(shape=(6, *labels.shape))
-
-        for z in range(labels.shape[0]):
-            labels_sec = labels[z]
-
-            descriptor_sec = self.extractor.get_descriptors(
-                segmentation=labels_sec, voxel_size=spec.voxel_size[1:]
-            )
-
-            descriptor[:, z] = descriptor_sec
-
-        old_batch = batch
-        batch = gp.Batch()
-
-        # create lsds mask array
         if self.lsds_mask and self.lsds_mask in request:
+            mask = (segmentation.data[crop] != 0).astype(np.float32)
+            for key in (self.labels_mask, self.unlabelled):
+                if key:
+                    mask *= batch[key].data[crop]
+            mask = np.stack([mask] * descriptor.shape[0]).astype(np.float32)
+            outputs[self.lsds_mask] = gp.Array(mask, spec.copy())
+        return outputs
 
-            if self.labels_mask:
-
-                mask = self._create_mask(
-                    old_batch, self.labels_mask, descriptor
-                )  # , crop)
-
-            else:
-
-                mask = (labels != 0).astype(np.float32)
-
-                mask_shape = len(mask.shape)
-
-                assert (
-                    mask.shape[-mask_shape:] == descriptor.shape[-mask_shape:]
+    def _descriptor(self, segmentation, crop):
+        return np.stack(
+            [
+                compute_lsds(
+                    segmentation[z],
+                    self.sigma[1:],
+                    self.voxel_size[1:],
+                    self.downsample,
+                    crop[1:],
                 )
-
-                mask = np.array([mask] * descriptor.shape[0])
-
-            if self.unlabelled:
-
-                unlabelled_mask = self._create_mask(
-                    old_batch, self.unlabelled, descriptor
-                )
-
-                mask = mask * unlabelled_mask
-
-            batch[self.lsds_mask] = gp.Array(
-                mask.astype(spec.dtype), spec.copy()
-            )
-
-        batch[self.descriptor] = gp.Array(descriptor.astype(spec.dtype), spec)
-
-        return batch
-
-    def _create_mask(self, batch, mask, lsds):
-
-        mask = batch.arrays[mask].data
-        mask = np.array([mask] * lsds.shape[0])
-
-        return mask
+                for z in range(crop[0].start, crop[0].stop)
+            ],
+            axis=1,
+        )

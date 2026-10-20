@@ -11,7 +11,6 @@ from ..gp.smooth_augment import SmoothAugment
 from ..gp.clahe_augment import ClaheAugment
 from ..gp.gamma_augment import GammaAugment
 from ..gp.impulse_noise_augment import ImpulseNoiseAugment
-from ..gp.bump_background import BumpBackground, UnbumpBackground
 
 
 class Napari2DDataset(IterableDataset):
@@ -175,16 +174,14 @@ class Napari2DDataset(IterableDataset):
         )
 
         if self.model_type == "2d_lsd" or self.model_type == "2d_mtlsd":
-            self.pipeline += BumpBackground(self.labels)
             self.pipeline += Add2DLSDs(
                 self.labels,
                 self.gt_lsds,
-                labels_mask=self.mask,
+                unlabelled=self.mask,
                 lsds_mask=self.lsds_weights,
                 sigma=self.lsd_sigma,
                 downsample=self.lsd_downsample,
             )
-            self.pipeline += UnbumpBackground(self.labels)
         if self.model_type == "2d_affs" or self.model_type == "2d_mtlsd":
             if self.aff_grow_boundary > 0:
                 self.pipeline += gp.GrowBoundary(
@@ -203,6 +200,11 @@ class Napari2DDataset(IterableDataset):
             ) + gp.BalanceLabels(
                 self.gt_affs, self.affs_weights, mask=self.gt_affs_mask, slab=(2, -1, -1, -1)
             )
+
+        loss_weights = (
+            self.lsds_weights if "lsd" in self.model_type else self.affs_weights
+        )
+        self.pipeline += gp.Reject(mask=loss_weights, min_masked=0.001)
 
     def __iter__(self):
         return iter(self.__yield_sample())

@@ -17,27 +17,28 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "numpy",
     "scipy",
-    "scikit-image",
+    "scikit-image>=0.26",
     "torch",
     "zarr<3",
     "numba",
-    "gunpowder",
+    "gunpowder<1.5",
     "magicgui",
     "qtpy",
     "pyqtgraph",
     "matplotlib",
     "napari",
     "tqdm",
-    "lsds",
+    "lsd-lite>=1.0.1",
+    "requests",
+    "tifffile",
     "mwatershed",
     "fastmorph[spherical]",
     "connected-components-3d",
@@ -75,9 +76,13 @@ where = ["src"]
 [tool.setuptools.dynamic]
 version = {attr = "napari_bootstrapper.__init__.__version__"}
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: download and verify the published checkpoints"]
+
 [tool.black]
 line-length = 79
-target-version = ['py311', 'py312', 'py313']
+target-version = ['py312', 'py313']
 
 [tool.ruff]
 line-length = 79
@@ -122,5 +127,5 @@ exclude = [
     "*_vendor*",
 ]
 
-target-version = "py311"
+target-version = "py312"
 fix = true

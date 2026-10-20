@@ -9,6 +9,21 @@ PRETRAINED_3D_MODEL_URLS = {
     "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.2/3d_affs_from_2d_mtlsd.zip",
 }
 
+PRETRAINED_3D_MODEL_SHA256 = {
+    "3d_affs_from_2d_affs": {
+        "archive": "0fe0beaf134d9779a41e3cf1aec2703643eb16510764dbd1be958980e50194be",
+        "checkpoint": "71a1699c59ba1c2b2421129e1f17cb7ff19175688990e3c38238730afb042dd3",
+    },
+    "3d_affs_from_2d_lsd": {
+        "archive": "42c3f929b30ed4183693c76cdc10df9816b5f68579d371ecea5d21ba816dca1f",
+        "checkpoint": "b3801757749f0cf98ae4535049f8a313dfbde94d2579661252cf6d4cc13a19c4",
+    },
+    "3d_affs_from_2d_mtlsd": {
+        "archive": "5d655f42b9a3ba718f6cc14ce582c35f044dacb4153f92cd0213619c39049694",
+        "checkpoint": "3721a4a37b32212910ae91e48ebbabe01debbb2c8fa362e6631c2c2073935cc4",
+    },
+}
+
 DEFAULT_2D_MODEL_CONFIG = {
     "batch_size": 8,
     "learning_rate": 1e-4,

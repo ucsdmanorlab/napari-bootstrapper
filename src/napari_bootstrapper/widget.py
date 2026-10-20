@@ -2,8 +2,9 @@ import os
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
-import re
+import hashlib
 import zipfile
+from copy import deepcopy
 from pathlib import Path
 
 import gunpowder as gp
@@ -39,6 +40,7 @@ from .gp.torch_predict import torchPredict
 from .models import (
     DEFAULT_2D_MODEL_CONFIG,
     DEFAULT_3D_MODEL_CONFIG,
+    PRETRAINED_3D_MODEL_SHA256,
     PRETRAINED_3D_MODEL_URLS,
     get_2d_model,
     get_3d_model,
@@ -361,7 +363,7 @@ class Widget(QMainWindow):
             lambda: self.open_model_options("2d")
         )
 
-        self.model_2d_config = DEFAULT_2D_MODEL_CONFIG
+        self.model_2d_config = deepcopy(DEFAULT_2D_MODEL_CONFIG)
 
         self.grid_2.addWidget(data_heading, 0, 0, 1, 2)
 
@@ -498,7 +500,7 @@ class Widget(QMainWindow):
             lambda: self.open_model_options("3d")
         )
 
-        self.model_3d_config = DEFAULT_3D_MODEL_CONFIG
+        self.model_3d_config = deepcopy(DEFAULT_3D_MODEL_CONFIG)
 
         self.train_3d_model_from_scratch_checkbox = QCheckBox(
             "Train from scratch"
@@ -648,7 +650,7 @@ class Widget(QMainWindow):
             self.prepare_for_stop_inference
         )
 
-        self.seg_params = DEFAULT_SEG_PARAMS
+        self.seg_params = deepcopy(DEFAULT_SEG_PARAMS)
         self.sync_seg_neighborhood()
 
     def set_grid_6(self):
@@ -781,8 +783,8 @@ class Widget(QMainWindow):
             batch_size=model_config["batch_size"],
             drop_last=True,
             num_workers=model_config["num_workers"],
-            pin_memory=True,
-            persistent_workers=True,
+            pin_memory=self.device_combo_box.currentText().startswith("cuda"),
+            persistent_workers=model_config["num_workers"] > 0,
         )
 
         # Load model and loss
@@ -2240,49 +2242,55 @@ class Widget(QMainWindow):
         url = PRETRAINED_3D_MODEL_URLS[model_type]
         file_path = self.tmp_dir / f"checkpoints_{model_type}.zip"
         out_dir = self.tmp_dir / f"checkpoints_{model_type}"
-        os.makedirs(out_dir, exist_ok=True)
+        member = f"{model_type}/model_checkpoint_25000.ckpt"
+        model_checkpoint = out_dir / member
+        expected = PRETRAINED_3D_MODEL_SHA256[model_type]
+        verified = False
+        if model_checkpoint.is_file():
+            with model_checkpoint.open("rb") as file:
+                verified = (
+                    hashlib.file_digest(file, "sha256").hexdigest()
+                    == expected["checkpoint"]
+                )
 
-        # if out_dir exists and contains checkpoints, skip download
-        if not (out_dir.exists() and any(out_dir.iterdir())):
+        if not verified:
             print(
                 f"Downloading {model_type} checkpoints zip to {file_path}..."
             )
-            response = requests.get(url, stream=True)
-            total_size = int(response.headers.get("content-length", 0))
+            digest = hashlib.sha256()
+            try:
+                with requests.get(url, stream=True, timeout=60) as response:
+                    response.raise_for_status()
+                    total_size = int(response.headers.get("content-length", 0))
+                    with (
+                        open(file_path, "wb") as file,
+                        tqdm(
+                            desc=f"{model_type} checkpoints",
+                            total=total_size,
+                            unit="iB",
+                            unit_scale=True,
+                            unit_divisor=1024,
+                        ) as progress_bar,
+                    ):
+                        for data in response.iter_content(chunk_size=1 << 20):
+                            digest.update(data)
+                            progress_bar.update(file.write(data))
 
-            with (
-                open(file_path, "wb") as file,
-                tqdm(
-                    desc=f"{model_type} checkpoints",
-                    total=total_size,
-                    unit="iB",
-                    unit_scale=True,
-                    unit_divisor=1024,
-                ) as progress_bar,
-            ):
-                for data in response.iter_content(chunk_size=1024):
-                    size = file.write(data)
-                    progress_bar.update(size)
-
-            # unzip checkpoints
-            print(f"Unzipping {model_type} checkpoints in {self.tmp_dir}...")
-            with zipfile.ZipFile(file_path, "r") as zip_ref:
-                zip_ref.extractall(out_dir)
-
-            # clean up
-            os.remove(file_path)
-
-        # get largest checkpoint
-        checkpoints = sorted(
-            out_dir.glob("**/model_checkpoint_*"),
-            key=lambda x: [
-                int(c) if c.isdigit() else c.lower()
-                for c in re.split("([0-9]+)", str(x))
-            ],
-        )
-        if len(checkpoints) == 0:
-            raise FileNotFoundError(f"No checkpoints found in {out_dir}")
-        model_checkpoint = checkpoints[-1]
+                if digest.hexdigest() != expected["archive"]:
+                    raise ValueError(
+                        f"SHA-256 mismatch for {model_type} archive"
+                    )
+                with zipfile.ZipFile(file_path, "r") as zip_ref:
+                    zip_ref.extract(member, out_dir)
+                with model_checkpoint.open("rb") as file:
+                    checksum = hashlib.file_digest(file, "sha256").hexdigest()
+                if checksum != expected["checkpoint"]:
+                    model_checkpoint.unlink()
+                    raise ValueError(
+                        f"SHA-256 mismatch for {model_type} checkpoint"
+                    )
+            finally:
+                file_path.unlink(missing_ok=True)
 
         # set pretrained checkpoint path
         self.remove_inference_attributes("3d")
