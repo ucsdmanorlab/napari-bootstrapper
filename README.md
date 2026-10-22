@@ -90,16 +90,6 @@ The widget can merge, split, delete, dilate, erode, open, close, and fill holes.
 Filters remove objects by size, section count, or distance from the object-size distribution.
 The widget uses [fastmorph](https://github.com/seung-lab/fastmorph), [fastremap](https://github.com/seung-lab/fastremap), and [cc3d](https://github.com/seung-lab/connected-components-3d).
 
-## Changes in 1.0
-
-- `lsd-lite` replaces the old `lsds` package. The 2D targets match Bootstrapper 1.0, including background masking and odd-sized crops.
-- The default LSD sigma stays at 10 pixels. New training excludes background from the LSD loss and rejects empty supervised batches.
-- The three pretrained 3D checkpoints match Bootstrapper 1.0. They remain the files published in its `v0.3.2` release.
-- Downloads verify SHA-256 hashes before extraction. The widget also verifies cached checkpoints and replaces damaged files.
-- CPU training accepts zero data-loader workers. Synthetic-label generation supports slices smaller than its dilation footprints.
-- Connected components reads affinities at the trained negative offsets. Mutex watershed applies the fragment filter, so segmentations can change.
-- Snapshots still use Zarr format 2. Zarr format 3 is not supported.
-
 ## Tests
 
 From a source checkout, install the test dependencies and run the headless suite:
