@@ -1,9 +1,8 @@
-# You may use this file to customize how your plugin page appears
-# on the napari hub: https://www.napari-hub.org/
-# See their wiki for details https://github.com/chanzuckerberg/napari-hub/wiki
+# You can use this file to customize how the plugin page appears on the
+# napari hub at https://www.napari-hub.org/. The napari hub wiki at
+# https://github.com/chanzuckerberg/napari-hub/wiki has the details.
 
-# This file should only be used IN ADDITION to entering
-# metadata fields (such as summary, description, authors, and various URLS)
-# in your standard python package metadata (e.g. setup.cfg, setup.py, or
-# pyproject.toml), when you would like those fields to be displayed
-# differently on the hub than in the napari application.
+# Use this file only in addition to the package metadata in pyproject.toml.
+# Enter metadata fields such as the summary, description, authors, and URLs
+# there, and add them here only when the napari hub should show them
+# differently than the napari application does.

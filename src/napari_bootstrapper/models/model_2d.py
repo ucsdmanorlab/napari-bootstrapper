@@ -44,7 +44,6 @@ class Model(torch.nn.Module):
             num_fmaps_out=num_fmaps_out,
         )
 
-        # Create output heads based on model type
         self.has_lsd = model_type in ["2d_lsd", "2d_mtlsd"]
         self.has_aff = model_type in ["2d_affs", "2d_mtlsd"]
 
@@ -60,7 +59,6 @@ class Model(torch.nn.Module):
 
     def forward(self, x):
         if len(x.size()) == 5:
-            # reshape from (n,c,d,h,w) to (n,c*d,h,w)
             n, c, d, h, w = x.size()
             x = x.view(n, c * d, h, w)
 

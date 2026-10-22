@@ -25,7 +25,8 @@ DEFAULT_SEG_PARAMS = {
 
 def segment_affs(affs, method="mutex watershed", params=DEFAULT_SEG_PARAMS):
     print(
-        f"Segmenting affs of shape {affs.shape} with method {method} and params:"
+        f"Segmenting affinities of shape {affs.shape} with method {method} "
+        "and parameters:"
     )
     pprint(params[method])
     if method == "mutex watershed":

@@ -1,8 +1,8 @@
 name: napari-bootstrapper
 display_name: Bootstrapper
-# use 'hidden' to remove plugin from napari hub search results
+# Set visibility to 'hidden' to remove the plugin from napari hub search results.
 visibility: public
-# see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
+# For the valid categories, see https://napari.org/stable/plugins/technical_references/manifest.html#fields
 categories: ["Annotation", "Segmentation", "Dataset"]
 contributions:
   commands:
@@ -13,7 +13,7 @@ contributions:
       python_name: napari_bootstrapper:make_fluo_c2dl_huh7_sample_data
       title: fluo_c2dl_huh7
     - id: napari-bootstrapper.proofreading
-      title: Create Proofreading
+      title: Create Proofreading widget
       python_name: napari_bootstrapper.post._merge_split_widget:ProofreadingWidget
     - id: napari-bootstrapper.Widget
       python_name: napari_bootstrapper.widget:Widget

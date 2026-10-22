@@ -43,7 +43,8 @@ def compute_connected_component_segmentation(
     Compute connected components from affinities.
 
     Args:
-        hard_aff: Boolean affinities, shape (3, z, y, x), with offset -1 per axis.
+        hard_aff: Boolean affinities with shape (3, z, y, x) and an offset of
+            -1 along each axis.
 
     Returns:
         The segmentation, with shape (z, y, x).
@@ -56,14 +57,13 @@ def compute_connected_component_segmentation(
             for k in range(visited.shape[2]):
                 if (
                     hard_aff[:, i, j, k].any() and not visited[i, j, k]
-                ):  # If foreground
+                ):
                     cur_to_visit = [(i, j, k)]
                     visited[i, j, k] = True
                     while cur_to_visit:
                         x, y, z = cur_to_visit.pop()
                         seg[x, y, z] = cur_id
 
-                        # Check all neighbors
                         if (
                             x + 1 < visited.shape[0]
                             and hard_aff[0, x + 1, y, z]

@@ -38,16 +38,15 @@ def mwatershed_from_affinities(
     randomized_strides: bool = False,
     remove_debris: int | None = None,
 ):
-    # return fragments_data
     fragments_data = compute_fragments(affs, sigma=sigma, bias=bias, noise_eps=noise_eps, min_seed_distance=min_seed_distance, seed_eps=seed_eps, neighborhood=neighborhood, strides=strides, randomized_strides=randomized_strides)
 
-    # filter fragments
+    # Remove fragments whose mean affinity is below filter_fragments.
     if filter_fragments > 0:
         fragments_data = filter_avg_fragments(
             affs, fragments_data, filter_fragments
         )
 
-    # remove small debris
+    # Remove objects smaller than remove_debris voxels.
     if remove_debris > 0:
         fragments_dtype = fragments_data.dtype
         fragments_data = fragments_data.astype(np.int64)
@@ -60,7 +59,7 @@ def mwatershed_from_affinities(
 
 
 def filter_avg_fragments(affs, fragments_data, filter_value):
-    # tmp (think about this)
+    # This is a temporary choice that needs more thought.
     average_affs = np.mean(affs[0:3], axis=0)
 
     filtered_fragments = []
@@ -96,30 +95,28 @@ def get_seeds(
 
 def compute_fragments(affs_data, sigma=None, bias=None, noise_eps=None, min_seed_distance=None, seed_eps=None, neighborhood=None, strides=None, randomized_strides=False):
     if sigma is not None:
-        # add 0 for channel dim
+        # Add a sigma of 0 for the channel axis.
         sigma = (0, *sigma)
     else:
         sigma = None
 
-    # add some random noise to affs (this is particularly necessary if your affs are
-    #  stored as uint8 or similar)
-    # If you have many affinities of the exact same value the order they are processed
-    # in may be fifo, so you can get annoying streaks.
+    # Add random noise to the affinities. The noise helps most when the
+    # affinities are stored as uint8 or a similar type. If many affinities have
+    # exactly the same value, mutex watershed may process them in first-in,
+    # first-out order and produce streaks.
 
     shift = np.zeros_like(affs_data)
 
     if noise_eps is not None:
         shift += np.random.randn(*affs_data.shape) * noise_eps
 
-    #######################
-
-    # add smoothed affs, to solve a similar issue to the random noise. We want to bias
-    # towards processing the central regions of objects first.
+    # Add smoothed affinities, which address an issue similar to the one that
+    # the noise addresses. They bias mutex watershed toward processing the
+    # central regions of objects first.
 
     if sigma is not None:
         shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
 
-    #######################
     shift += np.array([bias]).reshape(
         (-1, *((1,) * (len(affs_data.shape) - 1)))
     )

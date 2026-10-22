@@ -6,7 +6,7 @@ import numpy as np
 
 class CustomIntensityAugment(gp.BatchFilter):
     """Randomly scale and shift the values of an array.
-    Works on arrays with num_channels > 1.
+    It works on arrays with more than one channel.
 
     Args:
 

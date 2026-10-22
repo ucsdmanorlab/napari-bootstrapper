@@ -60,13 +60,12 @@ class Napari2DDataset(IterableDataset):
             )
             // 2
         )
-        self.context = (0, context[1], context[2])  # no padding along z
+        self.context = (0, context[1], context[2])
 
-        # get unet num_channels from shape
         if len(shape) == 4:
             if self.channels_dim is None:
                 raise AssertionError(
-                    "channels_dim must be specified for 4D arrays"
+                    "channels_dim is required for 4D arrays"
                 )
             num_channels = shape[self.channels_dim]
             self.shape = list(shape)

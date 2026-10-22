@@ -1,10 +1,8 @@
 """
-This module is an example of a barebones sample data provider for napari.
+This module provides the CREMI C and Fluo-C2DL-Huh7 sample data to napari.
 
-It implements the "sample data" specification.
-see: https://napari.org/stable/plugins/building_a_plugin/guides.html#sample-data
-
-Replace code below according to your needs.
+It implements the "sample data" specification at
+https://napari.org/stable/plugins/building_a_plugin/guides.html#sample-data
 """
 
 from __future__ import annotations

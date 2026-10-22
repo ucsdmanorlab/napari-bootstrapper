@@ -6,7 +6,7 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
         exclude: ^\.napari-hub/.*
-      - id: check-yaml # checks for correct yaml syntax for github actions ex.
+      - id: check-yaml # checks the YAML syntax of files such as the GitHub Actions workflows
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.8
     hooks:
@@ -20,7 +20,7 @@ repos:
     hooks:
       - id: napari-plugin-checks
   # https://mypy.readthedocs.io/en/stable/
-  # you may wish to add this as well!
+  # You can also add this mypy hook.
   # - repo: https://github.com/pre-commit/mirrors-mypy
   #   rev: v1.9.0
   #   hooks:

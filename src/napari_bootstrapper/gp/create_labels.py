@@ -20,11 +20,11 @@ from skimage.segmentation import watershed
 
 class CreateLabels(gp.BatchProvider):
     """
-    A provider node for generating synthetic 3D labels arrays.
+    A provider node that generates synthetic 3D label arrays.
 
     Args:
         array_key (gp.ArrayKey): The key of the array to provide labels for.
-        anisotropy_range (tuple): The range of anisotropy values to use for label generation.
+        anisotropy_range (tuple): The range of anisotropy values that CreateLabels draws from for each batch.
         shape (tuple): The shape of the labels array.
         dtype (numpy.dtype): The data type of the labels.
         voxel_size (tuple): The voxel size of the labels.
@@ -172,7 +172,6 @@ class CreateLabels(gp.BatchProvider):
             seeds = label(maxima, connectivity=1)
             labels = watershed(1.0 - peaks, seeds)
 
-        # black out a percentage of label ids
         for divisor in [3, 5]:
             if np.random.random() < 0.2:
                 labels[labels % divisor == 0] = 0

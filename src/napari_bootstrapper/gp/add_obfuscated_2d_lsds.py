@@ -32,7 +32,6 @@ class AddObfuscated2DLSDs(Add2DLSDs):
 
         np.random.shuffle(unique_ids)
 
-        # Determine the number of pairs we can merge
         max_pairs = len(unique_ids) // 2
         pairs_to_merge = min(num_pairs_to_merge, max_pairs)
 

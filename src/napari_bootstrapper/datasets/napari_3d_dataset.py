@@ -59,7 +59,6 @@ class Napari3DDataset(IterableDataset):
             self.output_shape, self.voxel_size, self.lsd_sigma
         )
 
-        # get unet num_channels from model type
         if model_type == "3d_affs_from_2d_affs":
             self.num_channels = len(self.in_neighborhood)
         elif model_type == "3d_affs_from_2d_lsd":

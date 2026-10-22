@@ -28,7 +28,8 @@ def _set_old_lsd_mass_placeholder(descriptor, segmentation):
 class Add2DLSDs(gp.BatchFilter):
     """Compute six Gaussian LSD channels per section, with sigma in world units.
 
-    The loss mask excludes background and zeros in labels_mask or unlabelled.
+    The loss mask excludes background voxels and voxels where labels_mask or
+    unlabelled is zero.
     """
 
     def __init__(

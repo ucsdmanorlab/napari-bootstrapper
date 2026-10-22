@@ -11,8 +11,8 @@ class ObfuscateAffs(gp.BatchFilter):
     positive affinities in areas that were previously negative.
     Parameters:
         affinity_array (str): The name of the array in the batch to modify.
-        blob_size_range (tuple): The range of possible blob sizes (min, max) pixels.
-        num_blobs_range (tuple): The range for the number of blobs to create (min, max).
+        blob_size_range (tuple): The range (min, max) of blob sizes, in pixels.
+        num_blobs_range (tuple): The range (min, max) of the number of blobs to create.
         probability (float): The probability of applying the modification to a batch.
     """
 
@@ -41,26 +41,21 @@ class ObfuscateAffs(gp.BatchFilter):
 
         affinities = batch[self.affinity_array].data
 
-        # Find boundary regions (where both channels are 0)
         boundary_mask = np.all(affinities == 0, axis=0)
 
-        # Generate random blobs
         num_blobs = np.random.randint(*self.num_blobs_range)
         for _ in range(num_blobs):
             self._create_and_place_blob(affinities, boundary_mask)
 
-        # Update the batch with modified affinities
         batch[self.affinity_array].data = affinities
 
     def _create_and_place_blob(self, affinities, boundary_mask):
 
         blob_size = np.random.randint(*self.blob_size_range)
 
-        # Create a random 2D blob
         blob = np.ones((1, blob_size, blob_size), dtype=bool)
         blob = binary_dilation(blob, iterations=self.blob_dilation_steps)
 
-        # Find a random position to place the blob
         valid_positions = np.where(boundary_mask)
 
         if len(valid_positions[0]) > 0:
@@ -71,7 +66,6 @@ class ObfuscateAffs(gp.BatchFilter):
                 valid_positions[2][idx],
             )
 
-            # Place the blob
             z_start, y_start, x_start = (
                 max(0, z - 1),
                 max(0, y - blob_size // 2),
@@ -86,7 +80,6 @@ class ObfuscateAffs(gp.BatchFilter):
                 : z_end - z_start, : y_end - y_start, : x_end - x_start
             ]
 
-            # Apply the blob to all channels
             for c in range(affinities.shape[0]):
                 affinities[c, z_start:z_end, y_start:y_end, x_start:x_end][
                     blob_slice

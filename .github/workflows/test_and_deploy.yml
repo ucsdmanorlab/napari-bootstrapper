@@ -1,5 +1,6 @@
-# This workflows will upload a Python Package using Twine when a release is created
-# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
+# This workflow runs the tests and uses Twine to upload the Python package
+# when someone creates a release.
+# For more information, see https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
 
 name: tests
 
@@ -9,7 +10,7 @@ on:
       - main
       - npe2
     tags:
-      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+      - "v*" # push events for tags that match v*, such as v1.0 and v20.15.10
   pull_request:
     branches:
       - main
@@ -40,7 +41,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # these libraries enable testing on Qt on linux
+      # These libraries let the tests use Qt on Linux.
       - uses: tlambert03/setup-qt-libs@v1
 
       - uses: astral-sh/setup-uv@v10.3.0
@@ -55,9 +56,9 @@ jobs:
         uses: codecov/codecov-action@v3
 
   deploy:
-    # this will run when you have tagged a commit, starting with "v*"
-    # and requires that you have put your twine API key in your
-    # github secrets (see readme for details)
+    # This job runs when you push a tag that matches "v*". It needs your
+    # Twine API key in the TWINE_API_KEY GitHub secret (see the README for
+    # details).
     needs: [test]
     runs-on: ubuntu-latest
     if: contains(github.ref, 'tags')

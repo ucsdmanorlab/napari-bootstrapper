@@ -1,5 +1,3 @@
-### Proofreading widget for napari-bootstrapper
-
 import cc3d
 import dask.array as da
 import fastremap
@@ -30,9 +28,6 @@ from skimage import draw
 from skimage.feature import peak_local_max
 from skimage.measure import regionprops
 from skimage.segmentation import watershed
-
-
-# utility functions
 
 
 def take(array, indices, axis=0):
@@ -97,7 +92,7 @@ def _line_to_indices(line, axis):
         z = np.full_like(x, planes[1])
         indices = np.stack([t, z, y, x], axis=1)
     else:
-        raise Exception("Only lines in 2d, 3d, and 4d are supported!")
+        raise Exception("Lines must be 2D, 3D, or 4D!")
     return indices
 
 
@@ -113,13 +108,10 @@ def _pad_box(shed_box, shape, radius=0):
     return tuple(padded)
 
 
-# selection helpers
-
-
 def _resolve_label_ids(
     labels, label_ids_str, selection_layer, labels_layer, viewer
 ):
-    """Resolve label IDs from manual entry, points, or shapes."""
+    """Resolve label IDs from the text entry or from a Points layer."""
     if label_ids_str:
         ids = [
             int(x.strip())
@@ -159,7 +151,7 @@ def _reset_selection(selection_layer):
 
 
 def _section_axis(labels_layer, viewer):
-    """The labels axis the viewer is slicing, in the layer's own axes.
+    """Return the labels axis the viewer is slicing, in the layer's own axes.
 
     Image layers with more dimensions (such as the stacked 2D predictions)
     add leading viewer axes, so viewer axis numbers cannot index the labels.
@@ -191,9 +183,6 @@ def _get_data_slice(labels, labels_layer, viewer, apply3d):
     return labels, None
 
 
-# operation implementations
-
-
 def _apply_morph(data, sub_op, op_style, radius, label_ids):
     morph_ops_stenciled = {
         "Dilate": fastmorph.dilate,
@@ -215,7 +204,7 @@ def _apply_morph(data, sub_op, op_style, radius, label_ids):
             return morph_ops_spherical[sub_op](arr, radius=radius)
 
     sel_str = f" on labels {label_ids}" if label_ids else " on all labels"
-    style_str = f"spherical (r={radius})" if op_style == "Spherical" else "stenciled"
+    style_str = f"spherical, radius {radius}" if op_style == "Spherical" else "stenciled"
     print(f"Applying {sub_op} ({style_str}){sel_str}")
 
     if label_ids is not None:
@@ -267,7 +256,7 @@ def _apply_fill_holes(data, version, label_ids, **kwargs):
     except fastmorph.FillError as exc:
         print(
             f"Fill holes made no change: {exc} "
-            "Check Remove enclosed to fill over enclosed labels."
+            "Turn on Remove enclosed to fill over enclosed labels."
         )
 
     return data
@@ -275,7 +264,7 @@ def _apply_fill_holes(data, version, label_ids, **kwargs):
 
 def _apply_merge(labels, label_ids, labels_layer, viewer, apply3d):
     if label_ids is None or len(label_ids) < 2:
-        print("Need at least 2 labels to merge!")
+        print("Merging needs at least 2 labels!")
         return
 
     if labels_layer.selected_label in label_ids:
@@ -294,7 +283,7 @@ def _apply_merge(labels, label_ids, labels_layer, viewer, apply3d):
     if write_back:
         write_back(data)
 
-    print(f"Merged labels {label_ids} -> {target}")
+    print(f"Merged labels {label_ids} into label {target}")
 
 
 def _apply_split(
@@ -324,7 +313,7 @@ def _apply_split(
     lp_label_ids = lp_label_ids[fg]
 
     if len(lp_label_ids) == 0:
-        print("No labels selected!")
+        print("No labels are selected!")
         return
 
     labels_points = {
@@ -397,7 +386,7 @@ def _apply_split(
                     new_labels[binary] + max_label
                 )
                 print(
-                    f"Split label {label_id} -> "
+                    f"Split label {label_id} into labels "
                     f"{marker_ids + max_label}"
                 )
             else:
@@ -440,7 +429,7 @@ def _apply_split(
                     new_labels[binary] + max_label
                 )
                 print(
-                    f"Split label {label_id} -> "
+                    f"Split label {label_id} into labels "
                     f"{marker_ids + max_label}"
                 )
             else:
@@ -451,7 +440,7 @@ def _apply_split(
 
 def _apply_delete(labels, label_ids, labels_layer, viewer, apply3d):
     if label_ids is None or len(label_ids) == 0:
-        print("No labels selected for deletion!")
+        print("No labels are selected for deletion!")
         return
 
     data, write_back = _get_data_slice(
@@ -545,12 +534,9 @@ def _apply_filter(
     if do_relabel:
         result = cc3d.connected_components(data)
         np.copyto(data, result.astype(data.dtype))
-        print("Relabeled connected components")
+        print("Relabeled the connected components")
 
     return data
-
-
-# Qt Proofreading Widget
 
 
 class ProofreadingWidget(QMainWindow):
@@ -563,7 +549,6 @@ class ProofreadingWidget(QMainWindow):
         main_widget = QWidget()
         layout = QVBoxLayout()
 
-        # Section: Selection
         layout.addWidget(self._make_heading("Selection"))
 
         sel_grid = QGridLayout()
@@ -587,20 +572,19 @@ class ProofreadingWidget(QMainWindow):
             "e.g. 1, 5, 12 (overrides selection)"
         )
         self.label_ids_input.setToolTip(
-            "Comma-separated label IDs. Overrides selection layer."
+            "Comma-separated label IDs. They override the selection layer."
         )
         sel_grid.addWidget(self.label_ids_input, 2, 1)
 
         self.apply3d_checkbox = QCheckBox("Apply in 3D")
         self.apply3d_checkbox.setToolTip(
-            "Apply operation to the full 3D volume "
+            "Apply the operation to the full 3D volume "
             "instead of the current 2D slice"
         )
         sel_grid.addWidget(self.apply3d_checkbox, 3, 0, 1, 2)
 
         layout.addLayout(sel_grid)
 
-        # Section: Operation
         layout.addWidget(self._make_heading("Operation"))
 
         op_grid = QGridLayout()
@@ -614,7 +598,6 @@ class ProofreadingWidget(QMainWindow):
 
         layout.addLayout(op_grid)
 
-        # Morph sub-controls
         self.morph_container = QWidget()
         morph_layout = QVBoxLayout()
         morph_layout.setContentsMargins(4, 2, 4, 2)
@@ -641,7 +624,6 @@ class ProofreadingWidget(QMainWindow):
         self.morph_radios["Dilate"].setChecked(True)
         morph_layout.addLayout(morph_op_grid)
 
-        # Style radio
         style_grid = QGridLayout()
         self.style_group = QButtonGroup(self)
         self.style_spherical = QRadioButton("Spherical")
@@ -655,13 +637,12 @@ class ProofreadingWidget(QMainWindow):
         style_grid.addWidget(self.style_spherical, 0, 1)
         style_grid.addWidget(self.style_stenciled, 0, 2)
 
-        # Radius slider
         self.radius_label = QLabel("Radius: 2")
         self.radius_slider = QSlider(Qt.Horizontal)
         self.radius_slider.setMinimum(2)
         self.radius_slider.setMaximum(7)
         self.radius_slider.setValue(2)
-        self.radius_slider.setToolTip("Radius for spherical ops")
+        self.radius_slider.setToolTip("Radius for spherical operations")
         self.radius_slider.valueChanged.connect(
             lambda v: self.radius_label.setText(f"Radius: {v}")
         )
@@ -672,7 +653,6 @@ class ProofreadingWidget(QMainWindow):
         self.style_container.setLayout(style_grid)
         morph_layout.addWidget(self.style_container)
 
-        # Fill holes sub-controls
         self.fill_container = QWidget()
         fill_layout = QVBoxLayout()
         fill_layout.setContentsMargins(4, 2, 4, 2)
@@ -698,13 +678,12 @@ class ProofreadingWidget(QMainWindow):
         fill_ver_grid.addWidget(self.fill_v2_radio, 0, 2)
         fill_layout.addLayout(fill_ver_grid)
 
-        # v1 params
         self.fill_v1_container = QWidget()
         v1_grid = QGridLayout()
         v1_grid.setContentsMargins(4, 2, 4, 2)
         self.morph_closing_cb = QCheckBox("Morphological closing")
         self.morph_closing_cb.setToolTip(
-            "Perform a dilation first, then erode at end of hole filling"
+            "Dilate first, then erode at the end of hole filling"
         )
         self.remove_enclosed_cb = QCheckBox("Remove enclosed")
         self.remove_enclosed_cb.setToolTip(
@@ -712,7 +691,7 @@ class ProofreadingWidget(QMainWindow):
         )
         self.fix_borders_v1_cb = QCheckBox("Fix borders")
         self.fix_borders_v1_cb.setToolTip(
-            "Run 2D fill along image edges on each binary image"
+            "Run a 2D fill along the image edges of each binary image"
         )
         v1_grid.addWidget(self.morph_closing_cb, 0, 0)
         v1_grid.addWidget(self.remove_enclosed_cb, 1, 0)
@@ -720,13 +699,12 @@ class ProofreadingWidget(QMainWindow):
         self.fill_v1_container.setLayout(v1_grid)
         fill_layout.addWidget(self.fill_v1_container)
 
-        # v2 params
         self.fill_v2_container = QWidget()
         v2_grid = QGridLayout()
         v2_grid.setContentsMargins(4, 2, 4, 2)
         self.fix_borders_v2_cb = QCheckBox("Fix borders")
         self.fix_borders_v2_cb.setToolTip(
-            "Along each image edge, try filling each label as binary"
+            "Along each image edge, try filling each label as a binary image"
         )
         v2_grid.addWidget(QLabel("Merge threshold"), 0, 0)
         self.merge_threshold_slider = QSlider(Qt.Horizontal)
@@ -734,7 +712,8 @@ class ProofreadingWidget(QMainWindow):
         self.merge_threshold_slider.setMaximum(100)
         self.merge_threshold_slider.setValue(100)
         self.merge_threshold_slider.setToolTip(
-            "0.0-1.0: sealed surface requirement"
+            "Fraction of a hole's surface (0.0 to 1.0) that one label"
+            " must enclose"
         )
         self.merge_threshold_label = QLabel("1.00")
         self.merge_threshold_slider.valueChanged.connect(
@@ -754,7 +733,6 @@ class ProofreadingWidget(QMainWindow):
         self.morph_container.setLayout(morph_layout)
         layout.addWidget(self.morph_container)
 
-        # Merge/Split sub-controls
         self.edit_container = QWidget()
         edit_layout = QVBoxLayout()
         edit_layout.setContentsMargins(4, 2, 4, 2)
@@ -764,11 +742,12 @@ class ProofreadingWidget(QMainWindow):
         self.edit_op_group = QButtonGroup(self)
         self.edit_radios = {}
         edit_tooltips = {
-            "Merge": "Combine selected labels into one"
-            " (uses selected label or min ID)",
+            "Merge": "Combine the selected labels into one. The result keeps"
+            " the layer's selected label if it is among them, else the"
+            " smallest ID",
             "Split": "Split a label using watershed"
             " (place points as markers)",
-            "Delete": "Remove selected labels (set to 0)",
+            "Delete": "Remove the selected labels (set them to 0)",
         }
         for i, op in enumerate(["Merge", "Split", "Delete"]):
             rb = QRadioButton(op)
@@ -779,7 +758,6 @@ class ProofreadingWidget(QMainWindow):
         self.edit_radios["Merge"].setChecked(True)
         edit_layout.addLayout(edit_op_grid)
 
-        # Split params
         self.split_container = QWidget()
         split_grid = QGridLayout()
         split_grid.setContentsMargins(4, 2, 4, 2)
@@ -791,7 +769,7 @@ class ProofreadingWidget(QMainWindow):
         self.min_distance_slider.setMaximum(100)
         self.min_distance_slider.setValue(10)
         self.min_distance_slider.setToolTip(
-            "Min distance between markers"
+            "Minimum distance between markers"
         )
         self.min_distance_label = QLabel("10")
         self.min_distance_slider.valueChanged.connect(
@@ -830,7 +808,6 @@ class ProofreadingWidget(QMainWindow):
         self.edit_container.setLayout(edit_layout)
         layout.addWidget(self.edit_container)
 
-        # Filter sub-controls
         self.filter_container = QWidget()
         filter_layout = QGridLayout()
         filter_layout.setContentsMargins(4, 2, 4, 2)
@@ -859,7 +836,7 @@ class ProofreadingWidget(QMainWindow):
         self.largest_k_spinbox.setRange(0, 1000000)
         self.largest_k_spinbox.setValue(0)
         self.largest_k_spinbox.setToolTip(
-            "Keep K largest labels (0 = skip)"
+            "Keep the K largest labels (0 = skip)"
         )
         filter_layout.addWidget(self.largest_k_spinbox, 2, 1)
 
@@ -870,7 +847,7 @@ class ProofreadingWidget(QMainWindow):
         self.sigma_spinbox.setSingleStep(0.1)
         self.sigma_spinbox.setDecimals(1)
         self.sigma_spinbox.setToolTip(
-            "Outlier threshold in std devs (0 = skip)"
+            "Outlier threshold in standard deviations (0 = skip)"
         )
         filter_layout.addWidget(self.sigma_spinbox, 3, 1)
 
@@ -879,21 +856,21 @@ class ProofreadingWidget(QMainWindow):
         self.min_z_spinbox.setRange(0, 1000)
         self.min_z_spinbox.setValue(0)
         self.min_z_spinbox.setToolTip(
-            "Min consecutive Z slices (0 = skip)"
+            "Minimum number of Z slices that a label must appear in"
+            " (0 = skip)"
         )
         filter_layout.addWidget(self.min_z_spinbox, 4, 1)
 
         self.relabel_cb = QCheckBox("Relabel after filtering")
         self.relabel_cb.setChecked(True)
         self.relabel_cb.setToolTip(
-            "Relabel connected components after filtering"
+            "Relabel the connected components after filtering"
         )
         filter_layout.addWidget(self.relabel_cb, 5, 0, 1, 2)
 
         self.filter_container.setLayout(filter_layout)
         layout.addWidget(self.filter_container)
 
-        # Apply / Undo buttons
         btn_grid = QGridLayout()
         self.apply_button = QPushButton("Apply")
         self.apply_button.setToolTip("Apply the selected operation")
@@ -911,7 +888,6 @@ class ProofreadingWidget(QMainWindow):
 
         main_widget.setLayout(layout)
 
-        # scroll area
         self.scroll.setWidget(main_widget)
         self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll.setHorizontalScrollBarPolicy(
@@ -921,7 +897,6 @@ class ProofreadingWidget(QMainWindow):
         self.setMinimumWidth(380)
         self.setCentralWidget(self.scroll)
 
-        # connect signals
         self.group_selector.currentTextChanged.connect(
             self._update_visibility
         )
@@ -938,7 +913,6 @@ class ProofreadingWidget(QMainWindow):
             self._update_visibility
         )
 
-        # layer events
         self.viewer.layers.events.inserted.connect(
             self._update_layer_selectors
         )
@@ -946,11 +920,8 @@ class ProofreadingWidget(QMainWindow):
             self._update_layer_selectors
         )
 
-        # initialize
         self._populate_layer_selectors()
         self._update_visibility()
-
-    # helpers
 
     def _make_heading(self, text):
         heading = QLabel(text)
@@ -1017,12 +988,10 @@ class ProofreadingWidget(QMainWindow):
         is_edit = group == "Merge / Split"
         is_filter = group == "Filter"
 
-        # containers
         self.morph_container.setVisible(is_morph)
         self.edit_container.setVisible(is_edit)
         self.filter_container.setVisible(is_filter)
 
-        # morph sub-visibility
         if is_morph:
             checked = self.morph_op_group.checkedButton()
             morph_op = checked.text() if checked else "Dilate"
@@ -1039,25 +1008,21 @@ class ProofreadingWidget(QMainWindow):
                 self.fill_v1_container.setVisible(is_v1)
                 self.fill_v2_container.setVisible(not is_v1)
 
-        # edit sub-visibility
         if is_edit:
             checked = self.edit_op_group.checkedButton()
             edit_op = checked.text() if checked else "Merge"
             self.split_container.setVisible(edit_op == "Split")
 
-        # dim selection controls for filter (not needed)
         sel_relevant = not is_filter
         self.selection_selector.setEnabled(sel_relevant)
         self.label_ids_input.setEnabled(sel_relevant)
         self.apply3d_checkbox.setEnabled(not is_filter)
 
-        # dim selection label styling
         dim_style = "" if sel_relevant else "color: #666;"
         self.label_ids_input.setStyleSheet(
             f"QLineEdit {{ {dim_style} }}"
         )
 
-        # apply button label
         if is_morph:
             checked = self.morph_op_group.checkedButton()
             op_name = checked.text() if checked else "Apply"
@@ -1082,13 +1047,12 @@ class ProofreadingWidget(QMainWindow):
     def _on_apply(self):
         labels_layer = self._get_labels_layer()
         if labels_layer is None:
-            print("No labels layer selected!")
+            print("No labels layer is selected!")
             return
 
         selection_layer = self._get_selection_layer()
         labels = labels_layer.data
 
-        # save undo state
         self._undo_state = (
             labels_layer.name,
             labels_layer.data.copy(),
@@ -1167,7 +1131,7 @@ class ProofreadingWidget(QMainWindow):
 
             if edit_op == "Merge":
                 if label_ids is None or len(label_ids) < 2:
-                    print("Need at least 2 labels to merge!")
+                    print("Merging needs at least 2 labels!")
                     _reset_selection(selection_layer)
                     return
                 _apply_merge(
@@ -1195,7 +1159,7 @@ class ProofreadingWidget(QMainWindow):
 
             elif edit_op == "Delete":
                 if label_ids is None or len(label_ids) == 0:
-                    print("No labels selected for deletion!")
+                    print("No labels are selected for deletion!")
                     _reset_selection(selection_layer)
                     return
                 _apply_delete(
@@ -1212,7 +1176,8 @@ class ProofreadingWidget(QMainWindow):
                 data = labels
             else:
                 print(
-                    "Labels >3D with multi-channel not supported!"
+                    "The filter does not support multi-channel labels with"
+                    " more than 3 dimensions!"
                 )
                 return
 

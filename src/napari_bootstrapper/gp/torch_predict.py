@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 class torchPredict(GenericPredict):
     """Torch implementation of :class:`gunpowder.nodes.Predict`.
 
-    Identical to :class:`gunpowder.torch.nodes.Predict`, but has
-    primitive support for MPS devices.
+    It is identical to :class:`gunpowder.torch.nodes.Predict`, except that
+    it adds basic support for MPS devices.
 
     Args:
 
