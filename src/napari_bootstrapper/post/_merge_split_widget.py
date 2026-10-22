@@ -158,17 +158,32 @@ def _reset_selection(selection_layer):
             pass
 
 
-def _get_data_slice(labels, viewer, apply3d):
+def _section_axis(labels_layer, viewer):
+    """The labels axis the viewer is slicing, in the layer's own axes.
+
+    Image layers with more dimensions (such as the stacked 2D predictions)
+    add leading viewer axes, so viewer axis numbers cannot index the labels.
+    """
+    offset = viewer.dims.ndim - labels_layer.ndim
+    axes = [a - offset for a in viewer.dims.order if a >= offset]
+    hidden = [a for a in axes if a + offset not in viewer.dims.displayed]
+    return (hidden or axes)[0]
+
+
+def _get_data_slice(labels, labels_layer, viewer, apply3d):
     if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
         return labels, None
-    elif labels.ndim == 3:
-        axis = viewer.dims.order[0]
-        plane = viewer.dims.current_step[axis]
+    point = [
+        int(round(x))
+        for x in labels_layer.world_to_data(viewer.dims.point)
+    ]
+    if labels.ndim == 3:
+        axis = _section_axis(labels_layer, viewer)
+        plane = point[axis]
         data_2d = take(labels, plane, axis)
         return data_2d, lambda result: put(labels, plane, result, axis)
     elif labels.ndim == 4:
-        p0 = viewer.dims.current_step[0]
-        p1 = viewer.dims.current_step[1]
+        p0, p1 = point[0], point[1]
         data_2d = labels[p0, p1]
         return data_2d, lambda result: labels.__setitem__(
             (p0, p1), result
@@ -240,14 +255,20 @@ def _apply_fill_holes(data, version, label_ids, **kwargs):
             filled = filled[0]
         return filled
 
-    if label_ids is not None:
-        selected = fastremap.mask_except(data.copy(), label_ids)
-        filled = _run_fill(selected, version, kwargs)
-        changed = filled != selected
-        data[changed] = filled[changed]
-    else:
-        filled = _run_fill(data, version, kwargs)
-        np.copyto(data, filled)
+    try:
+        if label_ids is not None:
+            selected = fastremap.mask_except(data.copy(), label_ids)
+            filled = _run_fill(selected, version, kwargs)
+            changed = filled != selected
+            data[changed] = filled[changed]
+        else:
+            filled = _run_fill(data, version, kwargs)
+            np.copyto(data, filled)
+    except fastmorph.FillError as exc:
+        print(
+            f"Fill holes made no change: {exc} "
+            "Check Remove enclosed to fill over enclosed labels."
+        )
 
     return data
 
@@ -264,7 +285,9 @@ def _apply_merge(labels, label_ids, labels_layer, viewer, apply3d):
 
     mapping = {lid: target for lid in label_ids if lid != target}
 
-    data, write_back = _get_data_slice(labels, viewer, apply3d)
+    data, write_back = _get_data_slice(
+        labels, labels_layer, viewer, apply3d
+    )
     fastremap.remap(
         data, mapping, preserve_missing_labels=True, in_place=True
     )
@@ -381,7 +404,7 @@ def _apply_split(
                 print("Nothing to split.")
 
         elif labels.ndim == 3:
-            axis = viewer.dims.order[0]
+            axis = _section_axis(labels_layer, viewer)
             plane = cur_points[0][axis]
             labels2d = take(labels, plane, axis)
 
@@ -426,12 +449,14 @@ def _apply_split(
             put(labels, plane, labels2d, axis)
 
 
-def _apply_delete(labels, label_ids, viewer, apply3d):
+def _apply_delete(labels, label_ids, labels_layer, viewer, apply3d):
     if label_ids is None or len(label_ids) == 0:
         print("No labels selected for deletion!")
         return
 
-    data, write_back = _get_data_slice(labels, viewer, apply3d)
+    data, write_back = _get_data_slice(
+        labels, labels_layer, viewer, apply3d
+    )
     result = fastremap.mask(data, label_ids)
     np.copyto(data, result)
     if write_back:
@@ -1091,7 +1116,7 @@ class ProofreadingWidget(QMainWindow):
             morph_op = checked.text() if checked else "Dilate"
 
             data, write_back = _get_data_slice(
-                labels, self.viewer, apply3d
+                labels, labels_layer, self.viewer, apply3d
             )
 
             if morph_op == "Fill holes":
@@ -1174,7 +1199,7 @@ class ProofreadingWidget(QMainWindow):
                     _reset_selection(selection_layer)
                     return
                 _apply_delete(
-                    labels, label_ids, self.viewer, apply3d
+                    labels, label_ids, labels_layer, self.viewer, apply3d
                 )
                 labels_layer.data = labels
 

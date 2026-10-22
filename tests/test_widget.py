@@ -4,6 +4,8 @@ import numpy as np
 import pytest
 import torch
 import zarr
+from napari.components import ViewerModel
+from npe2 import PluginManager
 
 from napari_bootstrapper.widget import Widget
 
@@ -30,15 +32,13 @@ def test_widget_builds_and_updates_model_choices(widget):
         ] == expected
 
 
-def test_widget_settings_do_not_change_another_viewer(
-    widget, make_napari_viewer, qtbot
-):
+def test_widget_settings_do_not_change_another_viewer(widget, qtbot):
     original_2d = deepcopy(widget.model_2d_config)
     original_3d = deepcopy(widget.model_3d_config)
     widget.model_2d_config["net"]["input_shape"][0] = 128
     widget.model_3d_config["net"]["input_shape"][0] = 16
     widget.seg_params["connected components"]["threshold"] = 0.9
-    other = Widget(make_napari_viewer(show=False))
+    other = Widget(ViewerModel())
     qtbot.addWidget(other)
     assert other.model_2d_config == original_2d
     assert other.model_3d_config == original_3d
@@ -52,9 +52,9 @@ def test_widget_settings_do_not_change_another_viewer(
         ("napari-bootstrapper-fluo_c2dl_huh7", 3),
     ],
 )
-def test_bundled_sample_loads_in_viewer(make_napari_viewer, sample, count):
-    viewer = make_napari_viewer(show=False)
-    layers = viewer.open_sample("napari-bootstrapper", sample)
+def test_bundled_sample_loads_in_viewer(sample, count):
+    PluginManager.instance().discover()
+    layers = ViewerModel().open_sample("napari-bootstrapper", sample)
     assert len(layers) == count
     raw, labels = layers[:2]
     assert raw.data.shape == labels.data.shape
@@ -180,3 +180,36 @@ def test_widget_trains_saves_and_segments_a_volume(
         for array in (widget.lsds_2d, widget.affs_2d, widget.affs_3d):
             assert np.isfinite(array).all()
             assert np.std(array, axis=(-3, -2, -1)).max() > 0
+
+
+def test_load_model_replaces_the_trained_model(
+    widget, sparse_layers, small_2d_config, tmp_path, monkeypatch
+):
+    widget.model_2d_type_selector.setCurrentText("2d_affs")
+    widget.model_2d_config = small_2d_config
+
+    def train():
+        widget.train_2d_worker = widget.train("2d")
+        assert widget.train_2d_worker.work() is None
+        widget.prepare_for_stop_training("2d")
+        return deepcopy(widget.model_2d.state_dict())
+
+    first = train()
+    checkpoint = tmp_path / "first.pth"
+    monkeypatch.setattr(
+        "napari_bootstrapper.widget.QFileDialog.getSaveFileName",
+        lambda *args, **kwargs: (str(checkpoint), ""),
+    )
+    widget.save_weights("2d")
+    second = train()
+    assert any(not torch.equal(first[k], second[k]) for k in first)
+
+    widget.train_2d_model_from_scratch_checkbox.setChecked(False)
+    monkeypatch.setattr(
+        "napari_bootstrapper.widget.QFileDialog.getOpenFileName",
+        lambda *args, **kwargs: (str(checkpoint), ""),
+    )
+    widget.load_weights("2d")
+    widget.reload_model_if_needed("2d", "2d_affs", num_channels=3)
+    loaded = widget.model_2d.state_dict()
+    assert all(torch.equal(loaded[k], first[k]) for k in first)

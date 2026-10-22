@@ -3,6 +3,7 @@ import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 import hashlib
+import sys
 import zipfile
 from copy import deepcopy
 from pathlib import Path
@@ -32,6 +33,7 @@ from qtpy.QtWidgets import (
 )
 from tqdm import tqdm
 
+from .datasets import stack_samples
 from .datasets.napari_2d_dataset import Napari2DDataset
 from .datasets.napari_3d_dataset import Napari3DDataset
 from .gp.napari_image_source import NapariImageSource
@@ -785,6 +787,7 @@ class Widget(QMainWindow):
             num_workers=model_config["num_workers"],
             pin_memory=self.device_combo_box.currentText().startswith("cuda"),
             persistent_workers=model_config["num_workers"] > 0,
+            collate_fn=stack_samples if sys.platform == "darwin" else None,
         )
 
         # Load model and loss
@@ -848,6 +851,7 @@ class Widget(QMainWindow):
             ),
             initial=getattr(self, f"start_iteration_{dimension}"),
         ):
+            batch = [torch.as_tensor(item) for item in batch]
             loss, outputs = train_iteration(
                 batch,
                 model=getattr(self, f"model_{dimension}"),
@@ -952,6 +956,11 @@ class Widget(QMainWindow):
             setattr(
                 self,
                 f"pretrained_{dimension}_model_checkpoint",
+                checkpoint_file_name,
+            )
+            setattr(
+                self,
+                f"last_loaded_{dimension}_model_checkpoint",
                 checkpoint_file_name,
             )
             getattr(self, worker_attr).quit()
@@ -1062,11 +1071,9 @@ class Widget(QMainWindow):
             model_needs_reload = True
 
         # Check if checkpoint has changed
-        if hasattr(self, checkpoint_attr) and hasattr(
-            self, last_checkpoint_attr
-        ):
+        if hasattr(self, checkpoint_attr):
             current_checkpoint = getattr(self, checkpoint_attr)
-            last_checkpoint = getattr(self, last_checkpoint_attr)
+            last_checkpoint = getattr(self, last_checkpoint_attr, None)
             if current_checkpoint != last_checkpoint:
                 model_needs_reload = True
                 print(

@@ -8,33 +8,9 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 import numpy as np
 import pytest
 import torch
+from napari.components import ViewerModel
 
 from napari_bootstrapper.widget import Widget
-
-
-@pytest.fixture(autouse=True)
-def headless_gl(monkeypatch):
-    from vispy.gloo import gl
-    from napari._vispy.utils.gl import get_gl_extensions, get_max_texture_sizes
-
-    capabilities = {
-        gl.GL_EXTENSIONS: "",
-        gl.GL_MAX_TEXTURE_SIZE: 16384,
-        32883: 2048,
-    }
-    original = gl.glGetParameter
-    monkeypatch.setattr(
-        gl,
-        "glGetParameter",
-        lambda key: (
-            capabilities[key] if key in capabilities else original(key)
-        ),
-    )
-    get_gl_extensions.cache_clear()
-    get_max_texture_sizes.cache_clear()
-    yield
-    get_gl_extensions.cache_clear()
-    get_max_texture_sizes.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -46,13 +22,11 @@ def deterministic_cpu():
 
 
 @pytest.fixture
-def widget(make_napari_viewer, qtbot, monkeypatch, tmp_path):
+def widget(qtbot, monkeypatch, tmp_path):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    viewer = make_napari_viewer(show=False)
-    widget = Widget(viewer)
+    widget = Widget(ViewerModel())
     widget.device_combo_box.setCurrentText("cpu")
     qtbot.addWidget(widget)
-    viewer.window.add_dock_widget(widget, name="Bootstrapper")
     return widget
 
 

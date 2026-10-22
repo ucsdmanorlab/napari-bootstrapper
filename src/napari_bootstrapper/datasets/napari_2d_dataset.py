@@ -30,9 +30,6 @@ class Napari2DDataset(IterableDataset):
         channels_dim: int | None = None,
     ):
         self.model_type = model_type
-        self.image_layer = image_layer
-        self.labels_layer = labels_layer
-        self.mask_layer = mask_layer
         self.channels_dim = channels_dim
 
         self.input_shape = [adj_slices, *input_shape]
@@ -51,7 +48,7 @@ class Napari2DDataset(IterableDataset):
 
         self.voxel_size = gp.Coordinate(self.voxel_size)
         self.offset = gp.Coordinate(self.offset)
-        shape = self.image_layer.data.shape
+        shape = image_layer.data.shape
         context = (
             calc_max_padding(
                 self.output_shape, self.voxel_size, self.lsd_sigma
@@ -82,9 +79,9 @@ class Napari2DDataset(IterableDataset):
         self.num_channels = num_channels * self.input_shape[0]
         self.shape = gp.Coordinate(self.shape)
 
-        self.__setup_pipeline()
+        self.__setup_pipeline(image_layer, labels_layer, mask_layer)
 
-    def __setup_pipeline(self):
+    def __setup_pipeline(self, image_layer, labels_layer, mask_layer):
         self.raw = gp.ArrayKey("RAW")
         self.labels = gp.ArrayKey("LABELS")
         self.mask = gp.ArrayKey("MASK")
@@ -97,19 +94,19 @@ class Napari2DDataset(IterableDataset):
 
         raw_spec = gp.ArraySpec(
             roi=gp.Roi(self.offset, self.voxel_size * self.shape),
-            dtype=self.image_layer.data.dtype,
+            dtype=image_layer.data.dtype,
             interpolatable=True,
             voxel_size=self.voxel_size,
         )
         labels_spec = gp.ArraySpec(
             roi=gp.Roi(self.offset, self.voxel_size * self.shape),
-            dtype=self.labels_layer.data.dtype,
+            dtype=labels_layer.data.dtype,
             interpolatable=False,
             voxel_size=self.voxel_size,
         )
         mask_spec = gp.ArraySpec(
             roi=gp.Roi(self.offset, self.voxel_size * self.shape),
-            dtype=self.mask_layer.data.dtype,
+            dtype=mask_layer.data.dtype,
             interpolatable=False,
             voxel_size=self.voxel_size,
         )
@@ -117,19 +114,19 @@ class Napari2DDataset(IterableDataset):
         self.pipeline = (
             (
                 NapariImageSource(
-                    image=self.image_layer,
+                    image=image_layer,
                     key=self.raw,
                     spec=raw_spec,
                     channels_dim=self.channels_dim,
                 ),
                 NapariLabelsSource(
-                    labels=self.labels_layer,
+                    labels=labels_layer,
                     key=self.labels,
                     spec=labels_spec,
                     channels_dim=self.channels_dim,
                 ),
                 NapariLabelsSource(
-                    labels=self.mask_layer,
+                    labels=mask_layer,
                     key=self.mask,
                     spec=mask_spec,
                     channels_dim=self.channels_dim,
