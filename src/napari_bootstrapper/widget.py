@@ -230,7 +230,7 @@ class Widget(QMainWindow):
         """
         text_label = QLabel("<h3>Bootstrapper</h3>")
         method_description_label = QLabel(
-            '<small>2D->3D method for dense 3D segmentations from sparse 2D labels.<br>If you are using this in your research, please <a href="https://github.com/ucsdmanorlab/bootstrapper#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/ucsdmanorlab/bootstrapper" style="color:gray;">https://github.com/ucsdmanorlab/bootstrapper</a></tt></small>'
+            '<small>2D-to-3D method for dense 3D segmentations from sparse 2D labels.<br>If you are using this in your research, please <a href="https://github.com/ucsdmanorlab/bootstrapper#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/ucsdmanorlab/bootstrapper" style="color:gray;">https://github.com/ucsdmanorlab/bootstrapper</a></tt></small>'
         )
         self.grid_0.addWidget(text_label, 0, 0, 1, 1)
         self.grid_0.addWidget(method_description_label, 1, 0, 2, 1)
@@ -602,7 +602,7 @@ class Widget(QMainWindow):
     def set_grid_5(self):
 
         seg_heading = self.set_section_heading("Segmentation")
-        seg_heading.setToolTip("Step 4: Run the 2D → 3D pipeline.")
+        seg_heading.setToolTip("Step 4: Run the 2D-to-3D pipeline.")
 
         self.seg_method_label = QLabel("Segmentation method:")
         self.seg_method_label.setToolTip(
@@ -630,7 +630,7 @@ class Widget(QMainWindow):
 
         self.start_inference_button = QPushButton("Start")
         self.start_inference_button.setToolTip(
-            "Run the complete pipeline: 2D model inference → 3D model inference → segmentation"
+            "Run 2D model inference, then 3D model inference, then segmentation"
         )
         self.stop_inference_button = QPushButton("Stop")
         self.stop_inference_button.setToolTip(
@@ -754,7 +754,7 @@ class Widget(QMainWindow):
 
         model_config = getattr(self, f"model_{dimension}_config")
 
-        # Ensure output_shape is computed
+        # Compute output_shape if it is missing
         if "output_shape" not in model_config["net"]:
             self.compute_output_shape(dimension)
 
@@ -925,7 +925,7 @@ class Widget(QMainWindow):
         self.start_inference_button.setEnabled(True)
         self.stop_inference_button.setEnabled(False)
 
-        # Handle the worker cleanup
+        # Save a checkpoint and stop the worker
         worker_attr = f"train_{dimension}_worker"
         if (
             hasattr(self, worker_attr)
@@ -1049,7 +1049,7 @@ class Widget(QMainWindow):
             raise InterruptedError("Inference cancelled by user")
 
     def reload_model_if_needed(self, dimension, model_type, num_channels):
-        """Helper function to load a model if needed (new type or new checkpoint)"""
+        """Load a model if needed (new type or new checkpoint)."""
         model_attr = f"model_{dimension}"
         model_config_attr = f"model_{dimension}_config"
         checkpoint_attr = f"pretrained_{dimension}_model_checkpoint"
@@ -1098,7 +1098,7 @@ class Widget(QMainWindow):
             else:
                 model_config = getattr(self, model_config_attr)
 
-            # Get the right model constructor function
+            # Pick the 2D or 3D model constructor
             model_func = get_2d_model if dimension == "2d" else get_3d_model
 
             # Create the model
@@ -1140,7 +1140,7 @@ class Widget(QMainWindow):
         int_affs = gp.ArrayKey("AFFS_2D")
         pred_affs = gp.ArrayKey("AFFS_3D")
 
-        # Ensure output_shapes are computed
+        # Compute output_shapes if they are missing
         if "output_shape" not in self.model_2d_config["net"]:
             self.compute_output_shape("2d")
         if "output_shape" not in self.model_3d_config["net"]:
@@ -1828,7 +1828,7 @@ class Widget(QMainWindow):
         ).currentText()
         config = getattr(self, f"model_{dimension}_config")
 
-        # Define filter for nested parameters - now paths like "net.num_fmaps"
+        # Define filter for nested parameters (paths like "net.num_fmaps")
         def param_filter(param_name):
             # Always include top-level parameters
             if "." not in param_name:
@@ -1922,7 +1922,7 @@ class Widget(QMainWindow):
         layout.setSpacing(2)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        # --- Affinity channels table ---
+        # Affinity channels table
         channel_collapsible = QCollapsible("Affinity Channels")
         channel_collapsible.setToolTip(
             "Select which affinity channels to use for segmentation"
@@ -2049,7 +2049,7 @@ class Widget(QMainWindow):
         channel_collapsible.expand()
         layout.addWidget(channel_collapsible)
 
-        # --- Segmentation parameters ---
+        # Segmentation parameters
         seg_collapsible = QCollapsible("Segmentation Parameters")
         seg_collapsible.setToolTip(
             f"Configure {method} algorithm parameters"
@@ -2107,7 +2107,7 @@ class Widget(QMainWindow):
             ]
 
             if is_mws:
-                # Update bias from table — store as (short, long) tuple
+                # Update bias from table: store as (short, long) tuple
                 # if pattern matches
                 new_bias = []
                 for bw in bias_widgets:

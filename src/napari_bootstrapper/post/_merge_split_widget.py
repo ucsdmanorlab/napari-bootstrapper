@@ -1,4 +1,4 @@
-### Unified proofreading widget for napari-bootstrapper
+### Proofreading widget for napari-bootstrapper
 
 import cc3d
 import dask.array as da
@@ -32,7 +32,7 @@ from skimage.measure import regionprops
 from skimage.segmentation import watershed
 
 
-# ---------- utility functions ----------
+# utility functions
 
 
 def take(array, indices, axis=0):
@@ -113,7 +113,7 @@ def _pad_box(shed_box, shape, radius=0):
     return tuple(padded)
 
 
-# ---------- selection helpers ----------
+# selection helpers
 
 
 def _resolve_label_ids(
@@ -191,7 +191,7 @@ def _get_data_slice(labels, labels_layer, viewer, apply3d):
     return labels, None
 
 
-# ---------- operation implementations ----------
+# operation implementations
 
 
 def _apply_morph(data, sub_op, op_style, radius, label_ids):
@@ -550,7 +550,7 @@ def _apply_filter(
     return data
 
 
-# ---------- Qt Proofreading Widget ----------
+# Qt Proofreading Widget
 
 
 class ProofreadingWidget(QMainWindow):
@@ -563,7 +563,7 @@ class ProofreadingWidget(QMainWindow):
         main_widget = QWidget()
         layout = QVBoxLayout()
 
-        # --- Section: Selection ---
+        # Section: Selection
         layout.addWidget(self._make_heading("Selection"))
 
         sel_grid = QGridLayout()
@@ -600,7 +600,7 @@ class ProofreadingWidget(QMainWindow):
 
         layout.addLayout(sel_grid)
 
-        # --- Section: Operation ---
+        # Section: Operation
         layout.addWidget(self._make_heading("Operation"))
 
         op_grid = QGridLayout()
@@ -614,7 +614,7 @@ class ProofreadingWidget(QMainWindow):
 
         layout.addLayout(op_grid)
 
-        # --- Morph sub-controls ---
+        # Morph sub-controls
         self.morph_container = QWidget()
         morph_layout = QVBoxLayout()
         morph_layout.setContentsMargins(4, 2, 4, 2)
@@ -754,7 +754,7 @@ class ProofreadingWidget(QMainWindow):
         self.morph_container.setLayout(morph_layout)
         layout.addWidget(self.morph_container)
 
-        # --- Merge/Split sub-controls ---
+        # Merge/Split sub-controls
         self.edit_container = QWidget()
         edit_layout = QVBoxLayout()
         edit_layout.setContentsMargins(4, 2, 4, 2)
@@ -767,7 +767,7 @@ class ProofreadingWidget(QMainWindow):
             "Merge": "Combine selected labels into one"
             " (uses selected label or min ID)",
             "Split": "Split a label using watershed"
-            " — place points as markers",
+            " (place points as markers)",
             "Delete": "Remove selected labels (set to 0)",
         }
         for i, op in enumerate(["Merge", "Split", "Delete"]):
@@ -830,7 +830,7 @@ class ProofreadingWidget(QMainWindow):
         self.edit_container.setLayout(edit_layout)
         layout.addWidget(self.edit_container)
 
-        # --- Filter sub-controls ---
+        # Filter sub-controls
         self.filter_container = QWidget()
         filter_layout = QGridLayout()
         filter_layout.setContentsMargins(4, 2, 4, 2)
@@ -893,7 +893,7 @@ class ProofreadingWidget(QMainWindow):
         self.filter_container.setLayout(filter_layout)
         layout.addWidget(self.filter_container)
 
-        # --- Apply / Undo buttons ---
+        # Apply / Undo buttons
         btn_grid = QGridLayout()
         self.apply_button = QPushButton("Apply")
         self.apply_button.setToolTip("Apply the selected operation")
@@ -950,7 +950,7 @@ class ProofreadingWidget(QMainWindow):
         self._populate_layer_selectors()
         self._update_visibility()
 
-    # --- helpers ---
+    # helpers
 
     def _make_heading(self, text):
         heading = QLabel(text)

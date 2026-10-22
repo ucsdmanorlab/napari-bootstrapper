@@ -43,8 +43,7 @@ napari -w napari-bootstrapper Bootstrapper
 ```
 
 You can also open the Bootstrapper widget from napari's Plugins menu.
-The File > Open Sample menu includes CREMI C (`cremi_c`) and Fluo-C2DL-Huh7 (`fluo_c2dl_huh7`) data, packaged with the plugin.
-Sample data needs no download.
+The File > Open Sample menu includes CREMI C (`cremi_c`) and Fluo-C2DL-Huh7 (`fluo_c2dl_huh7`) data, which ship with the plugin and need no download.
 
 ## Segmentation
 

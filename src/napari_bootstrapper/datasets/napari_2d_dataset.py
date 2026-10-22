@@ -60,7 +60,7 @@ class Napari2DDataset(IterableDataset):
             )
             // 2
         )
-        self.context = (0, context[1], context[2])  # ensure 2D padding
+        self.context = (0, context[1], context[2])  # no padding along z
 
         # get unet num_channels from shape
         if len(shape) == 4:
