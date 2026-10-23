@@ -5,7 +5,10 @@ import pytest
 import torch
 import zarr
 from napari.components import ViewerModel
+from napari.utils.theme import get_theme
 from npe2 import PluginManager
+from qtpy.QtCore import QPoint, Qt
+from qtpy.QtGui import QColor
 
 from napari_bootstrapper.widget import Widget
 
@@ -213,3 +216,129 @@ def test_load_model_replaces_the_trained_model(
     widget.reload_model_if_needed("2d", "2d_affs", num_channels=3)
     loaded = widget.model_2d.state_dict()
     assert all(torch.equal(loaded[k], first[k]) for k in first)
+
+
+def test_pickers_list_only_matching_layer_types(widget):
+    def items(combo):
+        return [combo.itemText(i) for i in range(combo.count())]
+
+    widget.viewer.add_image(np.zeros((3, 8, 8), np.float32), name="raw")
+    widget.viewer.add_labels(np.zeros((3, 8, 8), np.uint8), name="labels")
+    widget.viewer.add_points(np.zeros((1, 3)), name="points")
+    assert items(widget.raw_selector) == ["raw"]
+    assert items(widget.labels_selector) == ["labels"]
+    assert items(widget.mask_selector) == ["labels"]
+
+    widget.viewer.layers.remove("labels")
+    assert items(widget.labels_selector) == []
+    assert items(widget.mask_selector) == []
+    assert items(widget.raw_selector) == ["raw"]
+
+
+def test_cancelled_save_writes_nothing(widget, monkeypatch):
+    monkeypatch.setattr(
+        "napari_bootstrapper.widget.QFileDialog.getSaveFileName",
+        lambda *args, **kwargs: ("", ""),
+    )
+    widget.model_2d = torch.nn.Linear(1, 1)
+    widget.optimizer_2d = torch.optim.Adam(widget.model_2d.parameters())
+    widget.iterations_2d = [0]
+    widget.losses_2d = [1.0]
+
+    def save(*args, **kwargs):
+        raise AssertionError("Save wrote a checkpoint after Cancel")
+
+    monkeypatch.setattr("napari_bootstrapper.widget.torch.save", save)
+    widget.save_weights("2d")
+
+
+@pytest.mark.parametrize("theme_id", ["light", "dark"])
+def test_widget_follows_the_viewer_theme(widget, theme_id):
+    widget.viewer.theme = theme_id
+    theme = get_theme(theme_id)
+    assert theme.current.as_rgb() in widget.styleSheet()
+    background = QColor(theme.foreground.as_hex()).name()
+    for plot in (widget.losses_2d_widget, widget.losses_3d_widget):
+        assert plot.backgroundBrush().color().name() == background
+    assert theme.text.as_hex() in widget._description_label.text()
+
+
+def test_3d_training_controls_start_hidden(widget):
+    shown = (widget.download_3d_model_button, widget.load_3d_model_button)
+    hidden = (
+        widget.start_3d_training_button,
+        widget.train_3d_model_from_scratch_checkbox,
+    )
+    assert all(button.isVisibleTo(widget) for button in shown)
+    assert not any(control.isVisibleTo(widget) for control in hidden)
+
+    widget.train_3d_toggle.click()
+    assert all(control.isVisibleTo(widget) for control in hidden)
+    assert widget.train_3d_toggle.arrowType() == Qt.DownArrow
+    widget.train_3d_toggle.click()
+    assert not any(control.isVisibleTo(widget) for control in hidden)
+
+    widget.train_3d_toggle.click()
+    widget.stop_3d_training_button.setEnabled(True)
+    widget.train_3d_toggle.click()
+    assert widget.start_3d_training_button.isVisibleTo(widget)
+
+
+def test_sections_and_buttons_match_the_readme(widget):
+    boxes = (
+        widget.data_box,
+        widget.model_2d_box,
+        widget.model_3d_box,
+        widget.seg_box,
+    )
+    assert [box.accessibleName() for box in boxes] == [
+        "1. Data",
+        "2. 2D model",
+        "3. 3D model",
+        "4. Segmentation",
+    ]
+    assert widget.load_2d_model_button.text() == "Load model"
+    assert widget.load_3d_model_button.text() == "Load model"
+    for button in (
+        widget.advanced_2d_config_button,
+        widget.advanced_3d_config_button,
+        widget.advanced_seg_config_button,
+    ):
+        assert button.text() == "Advanced Config"
+        assert button.property("compact") is True
+    for button in (
+        widget.start_2d_training_button,
+        widget.download_3d_model_button,
+        widget.start_inference_button,
+    ):
+        assert button.property("primary") is True
+    for button in (
+        widget.stop_2d_training_button,
+        widget.load_3d_model_button,
+        widget.start_3d_training_button,
+    ):
+        assert button.property("primary") is not True
+
+
+def test_loss_plot_keeps_one_curve(widget):
+    widget.on_yield_training("2d", ([0.5, 0.4], [0, 1]))
+    widget.on_yield_training("2d", ([0.5, 0.4, 0.3], [0, 1, 2]))
+    assert len(widget.losses_2d_widget.listDataItems()) == 1
+    assert widget.losses_2d_widget.getAxis("left").autoSIPrefix is False
+
+
+def test_boxed_fields_share_one_left_edge(widget, qtbot):
+    widget.resize(420, 900)
+    with qtbot.waitExposed(widget):
+        widget.show()
+    fields = (
+        widget.raw_selector,
+        widget.labels_selector,
+        widget.make_mask_button,
+        widget.mask_selector,
+        widget.model_2d_type_selector,
+        widget.model_3d_type_selector,
+        widget.seg_method_selector,
+    )
+    edges = {field.mapTo(widget, QPoint(0, 0)).x() for field in fields}
+    assert len(edges) == 1

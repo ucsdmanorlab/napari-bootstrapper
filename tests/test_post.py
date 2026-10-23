@@ -1,5 +1,7 @@
 import numpy as np
 import pytest
+from napari.utils.theme import get_theme
+from qtpy.QtCore import QPoint
 
 from napari_bootstrapper.post import segment_affs
 
@@ -95,3 +97,90 @@ def test_fill_holes_around_an_enclosed_label_leaves_labels_unchanged(
     widget.apply3d_checkbox.setChecked(True)
     widget.apply_button.click()
     np.testing.assert_array_equal(layer.data, before)
+
+
+def test_filter_turns_off_the_selection(proofreading):
+    widget, _ = proofreading
+    selection = (
+        widget.selection_box,
+        widget.label_ids_input,
+        widget.apply3d_checkbox,
+    )
+    widget.group_selector.setCurrentText("Filter")
+    assert not any(control.isEnabled() for control in selection)
+    assert widget.labels_selector.isEnabled()
+    widget.group_selector.setCurrentText("Merge / Split")
+    assert all(control.isEnabled() for control in selection)
+
+
+@pytest.mark.parametrize(
+    "group,radio,text",
+    [
+        ("Morphology", "Dilate", "Dilate labels"),
+        ("Morphology", "Fill holes", "Fill holes"),
+        ("Merge / Split", "Merge", "Merge labels"),
+        ("Merge / Split", "Split", "Split labels"),
+        ("Merge / Split", "Delete", "Delete labels"),
+        ("Filter", None, "Filter labels"),
+    ],
+)
+def test_apply_button_names_the_operation(proofreading, group, radio, text):
+    widget, _ = proofreading
+    widget.group_selector.setCurrentText(group)
+    if radio is not None:
+        radios = (
+            widget.morph_radios
+            if group == "Morphology"
+            else widget.edit_radios
+        )
+        radios[radio].click()
+    assert widget.apply_button.text() == text
+
+
+def test_unused_inputs_turn_off(proofreading):
+    widget, _ = proofreading
+    widget.group_selector.setCurrentText("Merge / Split")
+    widget.edit_radios["Split"].click()
+    widget.points_as_markers_cb.setChecked(True)
+    assert not widget.min_distance_slider.isEnabled()
+    widget.points_as_markers_cb.setChecked(False)
+    assert widget.min_distance_slider.isEnabled()
+
+
+def test_hidden_rows_do_not_widen_the_label_column(proofreading, qtbot):
+    widget, _ = proofreading
+    widget.group_selector.setCurrentText("Merge / Split")
+    with qtbot.waitExposed(widget):
+        widget.show()
+
+    def field_x():
+        return widget.labels_selector.mapTo(widget, QPoint(0, 0)).x()
+
+    qtbot.wait(50)
+    narrow = field_x()
+    widget.group_selector.setCurrentText("Filter")
+    qtbot.waitUntil(lambda: field_x() > narrow)
+    widget.group_selector.setCurrentText("Merge / Split")
+    qtbot.waitUntil(lambda: field_x() == narrow)
+
+
+def test_filter_spinboxes_show_off_at_zero(proofreading):
+    widget, _ = proofreading
+    for spinbox in (
+        widget.dust_spinbox,
+        widget.max_size_spinbox,
+        widget.largest_k_spinbox,
+        widget.sigma_spinbox,
+        widget.min_z_spinbox,
+    ):
+        assert spinbox.value() == 0
+        assert spinbox.text() == "Off"
+
+
+def test_proofreading_follows_the_viewer_theme(proofreading):
+    widget, _ = proofreading
+    for theme_id in ("light", "dark"):
+        widget.viewer.theme = theme_id
+        assert get_theme(theme_id).current.as_rgb() in widget.styleSheet()
+    assert widget.apply_button.property("primary") is True
+    assert widget.undo_button.property("primary") is not True

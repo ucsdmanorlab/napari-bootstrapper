@@ -28,11 +28,24 @@ from qtpy.QtWidgets import (
     QMainWindow,
     QPushButton,
     QScrollArea,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 from tqdm import tqdm
 
+from ._ui import (
+    GROUP_SPACING,
+    SECTION_INSET,
+    align_label_columns,
+    apply_plugin_theme,
+    current_theme,
+    format_label_grid,
+    make_action_grid,
+    make_collapsible,
+    make_section,
+    style_loss_plot,
+)
 from .datasets import stack_samples
 from .datasets.napari_2d_dataset import Napari2DDataset
 from .datasets.napari_3d_dataset import Napari3DDataset
@@ -94,10 +107,13 @@ class Widget(QMainWindow):
         self.scroll = QScrollArea()
         self.widget = QWidget()
         layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(10)
 
         self.tmp_dir = Path.home() / ".napari_bootstrapper"
         self.tmp_dir.mkdir(exist_ok=True)
 
+        self._row_labels = []
         self.grid_0 = QGridLayout()
         self.set_grid_0()
         self.grid_1 = QGridLayout()
@@ -113,46 +129,102 @@ class Widget(QMainWindow):
         self.grid_6 = QGridLayout()
         self.set_grid_6()
 
+        self.data_box = make_section(
+            "1. Data",
+            self.grid_2,
+            "Select the 3D image to train on and segment, its sparse labels,"
+            " and a mask of the labelled voxels.",
+        )
+        self.model_2d_box = make_section(
+            "2. 2D model",
+            self.grid_3,
+            "Train a 2D model on the labelled sections, or load a 2D"
+            " checkpoint.",
+            button=self.advanced_2d_config_button,
+        )
+        self.model_3d_box = make_section(
+            "3. 3D model",
+            self.grid_4,
+            "Download the pretrained 3D model, or load or train your own.",
+            button=self.advanced_3d_config_button,
+        )
+        self.seg_box = make_section(
+            "4. Segmentation",
+            self.grid_5,
+            "Predict with both models, then segment the 3D affinities.",
+            button=self.advanced_seg_config_button,
+        )
+        self._label_grids = [
+            self.grid_1,
+            self.grid_2,
+            self.grid_3,
+            self.grid_4,
+            self.grid_5,
+        ]
+
         layout.addLayout(self.grid_0)
         layout.addLayout(self.grid_1)
-        layout.addLayout(self.grid_2)
-        layout.addLayout(self.grid_3)
-        layout.addLayout(self.grid_4)
-        layout.addLayout(self.grid_5)
+        layout.addWidget(self.data_box)
+        layout.addWidget(self.model_2d_box)
+        layout.addWidget(self.model_3d_box)
+        layout.addWidget(self.seg_box)
         layout.addLayout(self.grid_6)
+        layout.addStretch(1)
         self.widget.setLayout(layout)
         self.set_scroll_area()
         self.viewer.layers.events.inserted.connect(self.update_selectors)
         self.viewer.layers.events.removed.connect(self.update_selectors)
+        self.viewer.events.theme.connect(self._apply_theme)
+        self._apply_theme()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._align_label_columns()
+
+    def _apply_theme(self, event=None):
+        self._theme = current_theme(self.viewer)
+        apply_plugin_theme(self, self._theme, self._align_label_columns)
+        self._loss_pen = pg.mkPen(self._theme.text.as_hex())
+        style_loss_plot(self.losses_2d_widget, self._theme, self._loss_pen)
+        style_loss_plot(self.losses_3d_widget, self._theme, self._loss_pen)
+        self._set_link_labels(self._theme)
+
+    def _align_label_columns(self):
+        align_label_columns(self._row_labels, self._label_grids)
+
+    def _set_link_labels(self, theme):
+        color = theme.text.as_hex()
+        self._description_label.setText(
+            "<small>A 2D-to-3D method for dense 3D segmentations from sparse"
+            " 2D labels.<br>If you use this in your research, please"
+            ' <a href="https://github.com/ucsdmanorlab/bootstrapper#citation"'
+            f' style="color:{color};">cite us</a>.</small>'
+        )
+        self._feedback_label.setText(
+            "<small>Please share any feedback <a"
+            ' href="https://github.com/ucsdmanorlab/napari-bootstrapper'
+            '/issues/new/choose"'
+            f' style="color:{color};">here</a>.</small>'
+        )
 
     def update_selectors(self, event):
         """
         Updates `raw_selector`, `labels_selector` and `mask_selector`
-        when the user adds or removes a layer.
+        when the user adds or removes a layer. Each picker lists only the
+        layers of its own type.
         """
-        count = 0
-        for i in range(self.raw_selector.count() - 1, -1, -1):
-            if self.raw_selector.itemText(i) == f"{event.value}":
-                self.raw_selector.removeItem(i)
-                count = 1
-        if count == 0:
-            self.raw_selector.addItems([f"{event.value}"])
-
-        count = 0
-        for i in range(self.labels_selector.count() - 1, -1, -1):
-            if self.labels_selector.itemText(i) == f"{event.value}":
-                self.labels_selector.removeItem(i)
-                count = 1
-        if count == 0:
-            self.labels_selector.addItems([f"{event.value}"])
-
-        count = 0
-        for i in range(self.mask_selector.count() - 1, -1, -1):
-            if self.mask_selector.itemText(i) == f"{event.value}":
-                self.mask_selector.removeItem(i)
-                count = 1
-        if count == 0:
-            self.mask_selector.addItems([f"{event.value}"])
+        name = f"{event.value}"
+        for picker, kind in (
+            (self.raw_selector, Image),
+            (self.labels_selector, Labels),
+            (self.mask_selector, Labels),
+        ):
+            index = picker.findText(name)
+            if event.type == "removed":
+                if index >= 0:
+                    picker.removeItem(index)
+            elif isinstance(event.value, kind) and index < 0:
+                picker.addItem(name)
 
     def show_hide_channels_dim(self):
         if self.raw_selector.currentText() == "":
@@ -214,14 +286,13 @@ class Widget(QMainWindow):
 
     def set_grid_0(self):
         """
-        Adds the plugin title and description.
+        Adds the plugin description. `_set_link_labels` sets its text.
         """
-        text_label = QLabel("<h3>Bootstrapper</h3>")
-        method_description_label = QLabel(
-            '<small>A 2D-to-3D method for dense 3D segmentations from sparse 2D labels.<br>If you use this in your research, please <a href="https://github.com/ucsdmanorlab/bootstrapper#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/ucsdmanorlab/bootstrapper" style="color:gray;">https://github.com/ucsdmanorlab/bootstrapper</a></tt></small>'
-        )
-        self.grid_0.addWidget(text_label, 0, 0, 1, 1)
-        self.grid_0.addWidget(method_description_label, 1, 0, 2, 1)
+        self._description_label = QLabel(self)
+        self._description_label.setWordWrap(True)
+        self._description_label.setOpenExternalLinks(True)
+        self.grid_0.setContentsMargins(SECTION_INSET, 0, SECTION_INSET, 0)
+        self.grid_0.addWidget(self._description_label, 0, 0, 1, 1)
 
     def set_grid_1(self):
         """
@@ -242,23 +313,15 @@ class Widget(QMainWindow):
         if torch.backends.mps.is_available():
             self.device_combo_box.addItem("mps")
             self.device_combo_box.setCurrentText("mps")
+        format_label_grid(self.grid_1, inset=SECTION_INSET)
         self.grid_1.addWidget(device_label, 0, 0, 1, 1)
         self.grid_1.addWidget(self.device_combo_box, 0, 1, 1, 1)
+        self._row_labels.append(device_label)
 
     def set_grid_2(self):
         """
-        Adds the data selectors and the 2D model and training configuration.
+        Adds the image, labels and mask selectors and the Make mask button.
         """
-        data_heading = self.set_section_heading("Data")
-        data_heading.setToolTip(
-            "Step 1. Select the 3D image to train on and segment. Then select its training labels and training mask."
-        )
-
-        model_2d_heading = self.set_section_heading("2D model")
-        model_2d_heading.setToolTip(
-            "Step 2. Configure and train the 2D model, or load a pretrained model."
-        )
-
         raw_label = QLabel(self)
         raw_label.setText("Image layer")
         raw_label.setToolTip("Select the image layer to train on")
@@ -272,14 +335,14 @@ class Widget(QMainWindow):
 
         self.channels_dim = None
         self.channels_dim_label = QLabel(self)
-        self.channels_dim_label.setText("Channels dimension")
+        self.channels_dim_label.setText("Channel axis")
         self.channels_dim_label.setToolTip(
-            "The image layer has 4 dimensions, so select its channels dimension, for example 3 for DHWC or 0 for CDHW"
+            "The image has 4 dimensions. Select its channel axis, for example"
+            " 3 for DHWC or 0 for CDHW."
         )
         self.channels_dim_combo_box = QComboBox(self)
         self.channels_dim_combo_box.setToolTip(
-            "Select the channels dimension,"
-            " for example 3 for DHWC or 0 for CDHW"
+            "Select the channel axis, for example 3 for DHWC or 0 for CDHW."
         )
         self.channels_dim_combo_box.addItem("0")
         self.channels_dim_combo_box.addItem("1")
@@ -312,27 +375,57 @@ class Widget(QMainWindow):
         self.make_mask_button = QPushButton(self)
         self.make_mask_button.setText("Make mask")
         self.make_mask_button.setToolTip(
-            "Make a binary mask from the labels data (1 where labeled, 0 elsewhere)"
+            "Make a binary mask from the labels data"
+            " (1 where labeled, 0 elsewhere)"
         )
         self.make_mask_button.clicked.connect(self.make_mask)
 
         mask_label = QLabel(self)
         mask_label.setText("Mask layer")
         mask_label.setToolTip(
-            "Select the mask layer to use for training. Training computes the loss only where the mask is 1"
+            "Select the mask layer to use for training. Training computes the"
+            " loss only where the mask is 1"
         )
         self.mask_selector = QComboBox(self)
         self.mask_selector.setToolTip(
-            "Select the mask layer. Training computes the loss only where the mask is 1"
+            "Select the mask layer. Training computes the loss only where the"
+            " mask is 1"
         )
         for layer in self.viewer.layers:
             if isinstance(layer, Labels):
                 self.mask_selector.addItem(f"{layer}")
 
+        self.grid_2.addWidget(raw_label, 0, 0, 1, 1)
+        self.grid_2.addWidget(self.raw_selector, 0, 1, 1, 1)
+
+        self.grid_2.addWidget(self.channels_dim_label, 1, 0, 1, 1)
+        self.grid_2.addWidget(self.channels_dim_combo_box, 1, 1, 1, 1)
+
+        self.grid_2.addWidget(labels_label, 2, 0, 1, 1)
+        self.grid_2.addWidget(self.labels_selector, 2, 1, 1, 1)
+
+        self.grid_2.addWidget(self.make_mask_button, 3, 1, 1, 1)
+        self.grid_2.addWidget(mask_label, 4, 0, 1, 1)
+        self.grid_2.addWidget(self.mask_selector, 4, 1, 1, 1)
+
+        self._row_labels += [
+            raw_label,
+            self.channels_dim_label,
+            labels_label,
+            mask_label,
+        ]
+
+    def set_grid_3(self):
+        """
+        Adds the 2D task selector, the Load model, Train, Stop and Save
+        buttons, and the 2D loss plot.
+        """
         model_2d_type_label = QLabel(self)
         model_2d_type_label.setText("Task")
         model_2d_type_label.setToolTip(
-            "Select the task (output) for the 2D model: 2D affs (affinity maps), 2D lsd (local shape descriptors), or 2D mtlsd (multi-task, both lsd and affs)"
+            "Select the task (output) for the 2D model: 2D affs (affinity"
+            " maps), 2D lsd (local shape descriptors), or 2D mtlsd"
+            " (multi-task, both lsd and affs)"
         )
         self.model_2d_type_selector = QComboBox(self)
         self.model_2d_type_selector.setToolTip(
@@ -347,7 +440,8 @@ class Widget(QMainWindow):
 
         self.advanced_2d_config_button = QPushButton("Advanced Config")
         self.advanced_2d_config_button.setToolTip(
-            "Configure the training, network, and task parameters for the 2D model"
+            "Configure the training, network, and task parameters for the 2D"
+            " model"
         )
         self.advanced_2d_config_button.clicked.connect(
             lambda: self.open_model_options("2d")
@@ -355,56 +449,24 @@ class Widget(QMainWindow):
 
         self.model_2d_config = deepcopy(DEFAULT_2D_MODEL_CONFIG)
 
-        self.grid_2.addWidget(data_heading, 0, 0, 1, 2)
-
-        self.grid_2.addWidget(raw_label, 1, 0, 1, 1)
-        self.grid_2.addWidget(self.raw_selector, 1, 1, 1, 1)
-
-        self.grid_2.addWidget(self.channels_dim_label, 2, 0, 1, 1)
-        self.grid_2.addWidget(self.channels_dim_combo_box, 2, 1, 1, 1)
-
-        self.grid_2.addWidget(labels_label, 3, 0, 1, 1)
-        self.grid_2.addWidget(self.labels_selector, 3, 1, 1, 1)
-
-        self.grid_2.addWidget(self.make_mask_button, 4, 0, 1, 2)
-        self.grid_2.addWidget(mask_label, 5, 0, 1, 1)
-        self.grid_2.addWidget(self.mask_selector, 5, 1, 1, 1)
-
-        self.grid_2.addWidget(model_2d_heading, 6, 0, 1, 2)
-
-        self.grid_2.addWidget(model_2d_type_label, 7, 0, 1, 1)
-        self.grid_2.addWidget(self.model_2d_type_selector, 7, 1, 1, 1)
-        self.grid_2.addWidget(self.advanced_2d_config_button, 8, 0, 1, 2)
-
-    def set_grid_3(self):
-        """
-        Adds the Load model button, the 2D loss plot, and the Train, Stop
-        and Save buttons.
-        """
-
         self.train_2d_model_from_scratch_checkbox = QCheckBox(self)
         self.train_2d_model_from_scratch_checkbox.setText("Train from scratch")
         self.train_2d_model_from_scratch_checkbox.setToolTip(
-            "Check to train the 2D model from scratch, which resets the current model state and weights"
+            "Check to train the 2D model from scratch, which resets the"
+            " current model state and weights"
         )
 
         self.load_2d_model_button = QPushButton("Load model")
         self.load_2d_model_button.setToolTip(
-            "Select a checkpoint file to load the 2D model state or weights from"
+            "Select a checkpoint file to load the 2D model from"
         )
 
         self.losses_2d_widget = pg.PlotWidget()
-        self.losses_2d_widget.setBackground((37, 41, 49))
-        self.losses_2d_widget.setMinimumHeight(200)
+        self.losses_2d_widget.setFixedHeight(220)
         self.losses_2d_widget.hide()
-        styles = {"color": "white", "font-size": "12px"}
-        self.losses_2d_widget.setLabel("left", "Loss 2D", **styles)
-        self.losses_2d_widget.setLabel("bottom", "Iterations", **styles)
-
-        button_layout = QVBoxLayout()
-        button_row = QGridLayout()
 
         self.start_2d_training_button = QPushButton("Train")
+        self.start_2d_training_button.setProperty("primary", True)
         self.start_2d_training_button.setToolTip("Start training the 2D model")
         self.stop_2d_training_button = QPushButton("Stop")
         self.stop_2d_training_button.setToolTip("Stop training the 2D model")
@@ -415,13 +477,19 @@ class Widget(QMainWindow):
         self.stop_2d_training_button.setEnabled(False)
         self.save_2d_weights_button.setEnabled(False)
 
-        button_row.addWidget(self.start_2d_training_button, 0, 0, 1, 1)
-        button_row.addWidget(self.stop_2d_training_button, 0, 1, 1, 1)
-        button_row.addWidget(self.save_2d_weights_button, 0, 2, 1, 1)
-        button_row.setColumnStretch(0, 1)
-        button_row.setColumnStretch(1, 1)
-        button_row.setColumnStretch(2, 1)
-        button_layout.addLayout(button_row)
+        train_2d_actions = make_action_grid(
+            [
+                [
+                    (self.train_2d_model_from_scratch_checkbox, 2),
+                    (self.load_2d_model_button, 1),
+                ],
+                [
+                    (self.start_2d_training_button, 1),
+                    (self.stop_2d_training_button, 1),
+                    (self.save_2d_weights_button, 1),
+                ],
+            ]
+        )
 
         self.train_2d_model_from_scratch_checkbox.stateChanged.connect(
             lambda: self.affect_load_weights("2d")
@@ -442,33 +510,24 @@ class Widget(QMainWindow):
             lambda: self.save_weights("2d")
         )
 
-        self.grid_3.addWidget(
-            self.train_2d_model_from_scratch_checkbox, 0, 0, 1, 2
-        )
-        self.grid_3.addWidget(self.load_2d_model_button, 0, 2, 1, 2)
-        self.grid_3.addWidget(self.losses_2d_widget, 1, 0, 4, 4)
-        self.grid_3.addLayout(button_layout, 5, 0, 1, 4)
-
-        self.grid_3.setColumnStretch(0, 1)
-        self.grid_3.setColumnStretch(1, 1)
-        self.grid_3.setColumnStretch(2, 1)
-        self.grid_3.setColumnStretch(3, 1)
+        self.grid_3.addWidget(model_2d_type_label, 0, 0, 1, 1)
+        self.grid_3.addWidget(self.model_2d_type_selector, 0, 1, 1, 1)
+        self.grid_3.addLayout(train_2d_actions, 1, 0, 1, 2)
+        self.grid_3.addWidget(self.losses_2d_widget, 2, 0, 1, 2)
+        self._row_labels.append(model_2d_type_label)
 
     def set_grid_4(self):
         """
-        Adds the 3D model configuration, the 3D loss plot, and the Train and
-        Stop buttons.
+        Adds the 3D task selector, the Download and Load model buttons, and
+        the Train the 3D model panel with its Train, Stop and Save buttons
+        and the 3D loss plot.
         """
-
-        model_3d_heading = self.set_section_heading("3D model")
-        model_3d_heading.setToolTip(
-            "Step 3. Configure and load the 3D affinities model, or train it from scratch."
-        )
 
         model_3d_type_label = QLabel(self)
         model_3d_type_label.setText("Task")
         model_3d_type_label.setToolTip(
-            "Select the 2D input for the 3D affinities model. The widget sets the input from the 2D model task unless that task is 2D mtlsd"
+            "Select the 2D input for the 3D affinities model. The widget sets"
+            " the input from the 2D model task unless that task is 2D mtlsd"
         )
 
         self.model_3d_type_selector = QComboBox(self)
@@ -486,7 +545,8 @@ class Widget(QMainWindow):
 
         self.advanced_3d_config_button = QPushButton("Advanced Config")
         self.advanced_3d_config_button.setToolTip(
-            "Configure the training, network, and task parameters for the 3D model"
+            "Configure the training, network, and task parameters for the 3D"
+            " model"
         )
         self.advanced_3d_config_button.clicked.connect(
             lambda: self.open_model_options("3d")
@@ -498,36 +558,32 @@ class Widget(QMainWindow):
             "Train from scratch"
         )
         self.train_3d_model_from_scratch_checkbox.setToolTip(
-            "Check to train the 3D model from scratch, which resets the current model state and weights"
+            "Check to train the 3D model from scratch, which resets the"
+            " current model state and weights"
         )
 
-        model_buttons_layout = QGridLayout()
         self.download_3d_model_button = QPushButton("Download")
+        self.download_3d_model_button.setProperty("primary", True)
         self.download_3d_model_button.setToolTip(
-            "Download and load the latest pretrained weights for the current 3D model type"
+            "Download the pretrained 3D model for the current 3D task"
         )
-        self.load_3d_model_button = QPushButton("Load")
+        self.load_3d_model_button = QPushButton("Load model")
         self.load_3d_model_button.setToolTip(
-            "Select a checkpoint file to load the 3D model weights or state from"
+            "Select a checkpoint file to load the 3D model from"
         )
 
-        model_buttons_layout.addWidget(
-            self.download_3d_model_button, 0, 0, 1, 1
+        model_3d_actions = make_action_grid(
+            [
+                [
+                    (self.download_3d_model_button, 2),
+                    (self.load_3d_model_button, 1),
+                ]
+            ]
         )
-        model_buttons_layout.addWidget(self.load_3d_model_button, 0, 1, 1, 1)
-        model_buttons_layout.setColumnStretch(0, 1)
-        model_buttons_layout.setColumnStretch(1, 1)
 
         self.losses_3d_widget = pg.PlotWidget()
-        self.losses_3d_widget.setBackground((37, 41, 49))
-        self.losses_3d_widget.setMinimumHeight(200)
+        self.losses_3d_widget.setFixedHeight(220)
         self.losses_3d_widget.hide()
-        styles = {"color": "white", "font-size": "12px"}
-        self.losses_3d_widget.setLabel("left", "Loss 3D", **styles)
-        self.losses_3d_widget.setLabel("bottom", "Iterations", **styles)
-
-        button_layout = QVBoxLayout()
-        button_row = QGridLayout()
 
         self.start_3d_training_button = QPushButton("Train")
         self.start_3d_training_button.setToolTip("Start training the 3D model")
@@ -541,30 +597,43 @@ class Widget(QMainWindow):
         self.stop_3d_training_button.setEnabled(False)
         self.save_3d_weights_button.setEnabled(False)
 
-        button_row.addWidget(self.start_3d_training_button, 0, 0, 1, 1)
-        button_row.addWidget(self.stop_3d_training_button, 0, 1, 1, 1)
-        button_row.addWidget(self.save_3d_weights_button, 0, 2, 1, 1)
-        button_row.setColumnStretch(0, 1)
-        button_row.setColumnStretch(1, 1)
-        button_row.setColumnStretch(2, 1)
-        button_layout.addLayout(button_row)
-
-        self.grid_4.addWidget(model_3d_heading, 0, 0, 1, 4)
-
-        self.grid_4.addWidget(model_3d_type_label, 1, 0, 1, 2)
-        self.grid_4.addWidget(self.model_3d_type_selector, 1, 2, 1, 2)
-        self.grid_4.addWidget(self.advanced_3d_config_button, 2, 0, 1, 4)
-        self.grid_4.addWidget(
-            self.train_3d_model_from_scratch_checkbox, 3, 0, 1, 1
+        train_3d_actions = make_action_grid(
+            [
+                [
+                    (self.start_3d_training_button, 1),
+                    (self.stop_3d_training_button, 1),
+                    (self.save_3d_weights_button, 1),
+                ]
+            ]
         )
-        self.grid_4.addLayout(model_buttons_layout, 3, 1, 1, 3)
-        self.grid_4.addWidget(self.losses_3d_widget, 4, 0, 4, 4)
-        self.grid_4.addLayout(button_layout, 9, 0, 1, 4)
 
-        self.grid_4.setColumnStretch(0, 1)
-        self.grid_4.setColumnStretch(1, 1)
-        self.grid_4.setColumnStretch(2, 1)
-        self.grid_4.setColumnStretch(3, 1)
+        self.train_3d_toggle = QToolButton(self)
+        self.train_3d_toggle.setText("Train the 3D model")
+        self.train_3d_toggle.setCheckable(True)
+        self.train_3d_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.train_3d_toggle.setArrowType(Qt.RightArrow)
+        self.train_3d_toggle.setProperty("disclosure", True)
+        self.train_3d_toggle.setToolTip(
+            "Show the controls to train a 3D model from scratch or from a"
+            " loaded checkpoint."
+        )
+        self.train_3d_toggle.toggled.connect(self._show_3d_training)
+
+        self.train_3d_panel = QWidget(self)
+        train_3d_layout = QVBoxLayout(self.train_3d_panel)
+        train_3d_layout.setContentsMargins(0, 0, 0, 0)
+        train_3d_layout.setSpacing(6)
+        train_3d_layout.addWidget(self.train_3d_model_from_scratch_checkbox)
+        train_3d_layout.addLayout(train_3d_actions)
+        train_3d_layout.addWidget(self.losses_3d_widget)
+        self.train_3d_panel.setVisible(False)
+
+        self.grid_4.addWidget(model_3d_type_label, 0, 0, 1, 1)
+        self.grid_4.addWidget(self.model_3d_type_selector, 0, 1, 1, 1)
+        self.grid_4.addLayout(model_3d_actions, 1, 0, 1, 2)
+        self.grid_4.addWidget(self.train_3d_toggle, 2, 0, 1, 2, Qt.AlignLeft)
+        self.grid_4.addWidget(self.train_3d_panel, 3, 0, 1, 2)
+        self._row_labels.append(model_3d_type_label)
 
         self.train_3d_model_from_scratch_checkbox.stateChanged.connect(
             lambda: self.affect_load_weights("3d")
@@ -589,14 +658,27 @@ class Widget(QMainWindow):
             lambda: self.save_weights("3d")
         )
 
+    def _show_3d_training(self, shown):
+        """
+        Shows or hides the Train the 3D model panel. The panel stays open
+        while 3D training runs, so that Stop stays in reach.
+        """
+        if not shown and self.stop_3d_training_button.isEnabled():
+            self.train_3d_toggle.setChecked(True)
+            return
+        self.train_3d_panel.setVisible(shown)
+        self.train_3d_toggle.setArrowType(
+            Qt.DownArrow if shown else Qt.RightArrow
+        )
+
     def set_grid_5(self):
-
-        seg_heading = self.set_section_heading("Segmentation")
-        seg_heading.setToolTip("Step 4. Run the 2D-to-3D pipeline.")
-
-        self.seg_method_label = QLabel("Segmentation method")
+        """
+        Adds the segmentation method selector and the Start and Stop buttons.
+        """
+        self.seg_method_label = QLabel("Method")
         self.seg_method_label.setToolTip(
-            "Select the segmentation algorithm to run on the output 3D affinities"
+            "Select the segmentation algorithm to run on the output 3D"
+            " affinities"
         )
         self.seg_method_selector = QComboBox()
         self.seg_method_selector.setToolTip(
@@ -610,17 +692,18 @@ class Widget(QMainWindow):
         )
         self.seg_method_selector.setCurrentText("mutex watershed")
 
-        self.advanced_seg_config_button = QPushButton(
-            "Advanced Segmentation Parameters"
-        )
+        self.advanced_seg_config_button = QPushButton("Advanced Config")
         self.advanced_seg_config_button.setToolTip(
-            "Configure the parameters for the selected segmentation algorithm. Changes apply on the next run"
+            "Configure the parameters for the selected segmentation"
+            " algorithm. Changes apply on the next run"
         )
         self.advanced_seg_config_button.clicked.connect(self.open_seg_options)
 
         self.start_inference_button = QPushButton("Start")
+        self.start_inference_button.setProperty("primary", True)
         self.start_inference_button.setToolTip(
-            "Run 2D model inference, then 3D model inference, then segmentation"
+            "Run 2D model inference, then 3D model inference, then"
+            " segmentation"
         )
         self.stop_inference_button = QPushButton("Stop")
         self.stop_inference_button.setToolTip(
@@ -628,13 +711,19 @@ class Widget(QMainWindow):
         )
         self.stop_inference_button.setEnabled(False)
 
-        self.grid_5.addWidget(seg_heading, 0, 0, 1, 2)
+        seg_actions = make_action_grid(
+            [
+                [
+                    (self.start_inference_button, 2),
+                    (self.stop_inference_button, 1),
+                ]
+            ]
+        )
 
-        self.grid_5.addWidget(self.seg_method_label, 1, 0, 1, 1)
-        self.grid_5.addWidget(self.seg_method_selector, 1, 1, 1, 1)
-        self.grid_5.addWidget(self.advanced_seg_config_button, 2, 0, 1, 2)
-        self.grid_5.addWidget(self.start_inference_button, 3, 0, 1, 1)
-        self.grid_5.addWidget(self.stop_inference_button, 3, 1, 1, 1)
+        self.grid_5.addWidget(self.seg_method_label, 0, 0, 1, 1)
+        self.grid_5.addWidget(self.seg_method_selector, 0, 1, 1, 1)
+        self.grid_5.addLayout(seg_actions, 1, 0, 1, 2)
+        self._row_labels.append(self.seg_method_label)
         self.start_inference_button.clicked.connect(
             self.prepare_for_start_inference
         )
@@ -647,13 +736,12 @@ class Widget(QMainWindow):
 
     def set_grid_6(self):
         """
-        Adds the feedback URL.
+        Adds the feedback link. `_set_link_labels` sets its text.
         """
-
-        feedback_label = QLabel(
-            '<small>Please share any feedback <a href="https://github.com/ucsdmanorlab/napari-bootstrapper/issues/new/choose" style="color:gray;">here</a>.</small>'
-        )
-        self.grid_6.addWidget(feedback_label, 0, 0, 2, 1)
+        self._feedback_label = QLabel(self)
+        self._feedback_label.setOpenExternalLinks(True)
+        self.grid_6.setContentsMargins(SECTION_INSET, 0, SECTION_INSET, 0)
+        self.grid_6.addWidget(self._feedback_label, 0, 0, 1, 1)
 
     def prepare_for_start_training(self, dimension):
         self.start_2d_training_button.setEnabled(False)
@@ -872,7 +960,7 @@ class Widget(QMainWindow):
         Updates the loss plot every 10 training iterations.
         """
         getattr(self, f"losses_{dimension}_widget").plot(
-            plot_data[1], plot_data[0]
+            plot_data[1], plot_data[0], clear=True, pen=self._loss_pen
         )
 
     def prepare_for_stop_training(self, dimension):
@@ -1553,12 +1641,10 @@ class Widget(QMainWindow):
         """
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
-        dialog.setMinimumWidth(800)
 
         layout = QVBoxLayout()
-        layout.setSpacing(2)
-        layout.setContentsMargins(6, 6, 6, 6)
-        form_layout = QGridLayout()
+        layout.setSpacing(GROUP_SPACING)
+        layout.setContentsMargins(8, 8, 8, 8)
 
         widgets = {}
 
@@ -1593,6 +1679,13 @@ class Widget(QMainWindow):
                 (param_name, param_value)
             )
 
+        readonly_tooltips = {
+            "net.output_shape": "Computed from the network settings.",
+            "task.in_aff_neighborhood": (
+                "Set from the 2D model's affinity neighborhood."
+            ),
+        }
+
         def create_widget(param_name, param_value):
             is_readonly = (
                 readonly_params and param_name in readonly_params
@@ -1604,48 +1697,47 @@ class Widget(QMainWindow):
                     widget.setEnabled(False)
             else:
                 widget = QLineEdit()
+                widget.setMinimumWidth(240)
                 widget.setText(str(param_value))
+                widget.setCursorPosition(0)
                 if is_readonly:
                     widget.setReadOnly(True)
-                    widget.setStyleSheet(
-                        "QLineEdit { color: #888888; }"
-                    )
                 if isinstance(param_value, list):
                     widget.setToolTip(
-                        f"Enter a {type(param_value).__name__}, for example {param_value}"
+                        f"Enter a {type(param_value).__name__}, for example"
+                        f" {param_value}"
                     )
+                if is_readonly and param_name in readonly_tooltips:
+                    widget.setToolTip(readonly_tooltips[param_name])
             return widget
 
+        field_labels = []
+        group_grids = []
+        training = None
         for prefix, items in groups.items():
+            collapsible = make_collapsible(
+                prefix.replace("_", " ").title() if prefix else "Training",
+                self._theme,
+            )
+            group_widget = QWidget()
+            group_grid = QGridLayout()
+            group_grid.setContentsMargins(0, 2, 0, 0)
+            group_grid.setSpacing(6)
+            group_grid.setColumnStretch(1, 1)
+            for row, (param_name, param_value) in enumerate(items):
+                short_name = param_name.split(".", 1)[-1]
+                label = QLabel(short_name.replace("_", " ").title())
+                group_grid.addWidget(label, row, 0)
+                field_labels.append(label)
+                widget = create_widget(param_name, param_value)
+                group_grid.addWidget(widget, row, 1)
+                widgets[param_name] = widget
+            group_widget.setLayout(group_grid)
+            group_grids.append(group_grid)
+            collapsible.addWidget(group_widget)
+            layout.addWidget(collapsible)
             if prefix == "":
-                group_layout = QGridLayout()
-                for row, (param_name, param_value) in enumerate(items):
-                    label_text = param_name.replace("_", " ").title()
-                    group_layout.addWidget(QLabel(label_text), row, 0)
-                    widget = create_widget(param_name, param_value)
-                    group_layout.addWidget(widget, row, 1)
-                    widgets[param_name] = widget
-                layout.addLayout(group_layout)
-            else:
-                from superqt import QCollapsible
-
-                collapsible = QCollapsible(
-                    prefix.replace("_", " ").title()
-                )
-                group_widget = QWidget()
-                group_grid = QGridLayout()
-                group_grid.setContentsMargins(4, 2, 4, 2)
-                group_grid.setSpacing(4)
-                for row, (param_name, param_value) in enumerate(items):
-                    short_name = param_name.split(".", 1)[1]
-                    label_text = short_name.replace("_", " ").title()
-                    group_grid.addWidget(QLabel(label_text), row, 0)
-                    widget = create_widget(param_name, param_value)
-                    group_grid.addWidget(widget, row, 1)
-                    widgets[param_name] = widget
-                group_widget.setLayout(group_grid)
-                collapsible.addWidget(group_widget)
-                layout.addWidget(collapsible)
+                training = collapsible
 
         button_box = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
@@ -1654,6 +1746,10 @@ class Widget(QMainWindow):
         layout.addWidget(button_box)
         layout.setSizeConstraint(QVBoxLayout.SetMinAndMaxSize)
         dialog.setLayout(layout)
+        if field_labels:
+            align_label_columns(field_labels, group_grids)
+        if training is not None:
+            training.expand(animate=False)
 
         result = [False]
 
@@ -1842,24 +1938,23 @@ class Widget(QMainWindow):
         is_mws = method == "mutex watershed"
         is_cc = method == "connected components"
 
-        from superqt import QCollapsible
-
         dialog = QDialog(self)
         dialog.setWindowTitle(f"{method.title()} Parameters")
-        dialog.setMinimumWidth(600)
 
         layout = QVBoxLayout()
-        layout.setSpacing(2)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(GROUP_SPACING)
+        layout.setContentsMargins(8, 8, 8, 8)
 
-        channel_collapsible = QCollapsible("Affinity channels")
+        channel_collapsible = make_collapsible(
+            "Affinity channels", self._theme
+        )
         channel_collapsible.setToolTip(
             "Select which affinity channels to use for segmentation"
         )
         channel_widget = QWidget()
         channel_grid = QGridLayout()
-        channel_grid.setContentsMargins(4, 2, 4, 2)
-        channel_grid.setSpacing(4)
+        channel_grid.setContentsMargins(0, 2, 0, 0)
+        channel_grid.setSpacing(6)
 
         neighborhood = params.get("neighborhood", [])
         n = len(neighborhood)
@@ -1888,9 +1983,22 @@ class Widget(QMainWindow):
         if is_mws:
             headers.append("Stride")
         headers.append("Include")
+        # A spare column takes the extra width, so a wide note does not
+        # push the Offset column away from Bias.
+        channel_grid.setColumnStretch(len(headers), 1)
+        header_row = 0
+        if is_cc:
+            channel_grid.addWidget(
+                QLabel("Connected components uses at most 3 channels."),
+                0,
+                0,
+                1,
+                len(headers) + 1,
+            )
+            header_row = 1
         for col, header in enumerate(headers):
             lbl = QLabel(f"<b>{header}</b>")
-            channel_grid.addWidget(lbl, 0, col)
+            channel_grid.addWidget(lbl, header_row, col)
 
         include_col = len(headers) - 1
 
@@ -1899,7 +2007,7 @@ class Widget(QMainWindow):
         stride_widgets = []
         row_labels = []
         for i, offset in enumerate(neighborhood):
-            row = i + 1
+            row = header_row + i + 1
             col = 0
 
             offset_label = QLabel(str(offset))
@@ -1909,6 +2017,7 @@ class Widget(QMainWindow):
             bias_edit = QLineEdit()
             bv = per_ch_bias[i] if i < len(per_ch_bias) else 0.0
             bias_edit.setText(str(bv))
+            bias_edit.setCursorPosition(0)
             bias_edit.setMaximumWidth(60)
             channel_grid.addWidget(bias_edit, row, col)
             bias_widgets.append(bias_edit)
@@ -1922,6 +2031,7 @@ class Widget(QMainWindow):
                     else [1] * len(offset)
                 )
                 stride_edit.setText(str(stride_val))
+                stride_edit.setCursorPosition(0)
                 stride_edit.setMaximumWidth(120)
                 channel_grid.addWidget(stride_edit, row, col)
                 stride_widgets.append(stride_edit)
@@ -1934,16 +2044,9 @@ class Widget(QMainWindow):
             row_labels.append(offset_label)
 
         def update_row_style(idx, checked):
-            style = "" if checked else "color: #666666;"
-            row_labels[idx].setStyleSheet(style)
-            bias_widgets[idx].setStyleSheet(
-                f"QLineEdit {{ {style} }}" if style else ""
-            )
+            row_labels[idx].setEnabled(checked)
             bias_widgets[idx].setEnabled(checked)
             if is_mws and idx < len(stride_widgets):
-                stride_widgets[idx].setStyleSheet(
-                    f"QLineEdit {{ {style} }}" if style else ""
-                )
                 stride_widgets[idx].setEnabled(checked)
 
         def on_cc_toggle(checked, idx):
@@ -1974,14 +2077,16 @@ class Widget(QMainWindow):
         channel_collapsible.expand()
         layout.addWidget(channel_collapsible)
 
-        seg_collapsible = QCollapsible("Segmentation parameters")
+        seg_collapsible = make_collapsible(
+            "Segmentation parameters", self._theme
+        )
         seg_collapsible.setToolTip(
             f"Configure the {method} algorithm parameters"
         )
         seg_widget = QWidget()
         seg_grid = QGridLayout()
-        seg_grid.setContentsMargins(4, 2, 4, 2)
-        seg_grid.setSpacing(4)
+        seg_grid.setContentsMargins(0, 2, 0, 0)
+        seg_grid.setSpacing(6)
 
         exclude_keys = {
             "neighborhood",
@@ -2003,6 +2108,7 @@ class Widget(QMainWindow):
             else:
                 w = QLineEdit()
                 w.setText(str(value))
+                w.setCursorPosition(0)
             seg_grid.addWidget(w, row, 1)
             param_widgets[key] = w
             row += 1
@@ -2098,7 +2204,7 @@ class Widget(QMainWindow):
 
     def load_weights(self, dimension):
         """
-        Handles a click on the 2D Load model button or the 3D Load button.
+        Handles a click on the 2D or 3D Load model button.
         """
         file_name, _ = QFileDialog.getOpenFileName(
             caption=f"Load {dimension.upper()} model weights"
@@ -2353,7 +2459,7 @@ class Widget(QMainWindow):
                 )
                 getattr(self, f"losses_{dimension}_widget").clear()
                 getattr(self, f"losses_{dimension}_widget").plot(
-                    state["iterations"], state["losses"]
+                    state["iterations"], state["losses"], pen=self._loss_pen
                 )
                 getattr(self, f"losses_{dimension}_widget").show()
             else:
@@ -2404,6 +2510,8 @@ class Widget(QMainWindow):
         checkpoint_file_name, _ = QFileDialog.getSaveFileName(
             caption=f"Save {dimension.upper()} model weights"
         )
+        if not checkpoint_file_name:
+            return
         if (
             hasattr(self, f"model_{dimension}")
             and hasattr(self, f"optimizer_{dimension}")
@@ -2489,25 +2597,3 @@ class Widget(QMainWindow):
             process_and_save_array(
                 arr, iteration, "outputs", i, is_input=False
             )
-
-    def set_section_heading(self, text):
-        heading = QLabel(text)
-
-        heading.setStyleSheet(
-            """
-            QLabel {
-                color: #555;
-                font-size: 13px;
-                padding: 5px;
-                border-top: 0.5px solid #333;
-                border-bottom: 0.5px solid #333;
-                margin-top: 10px;
-                margin-bottom: 10px;
-                text-align: center;
-                background: transparent;
-            }
-        """
-        )
-
-        heading.setAlignment(Qt.AlignCenter)
-        return heading

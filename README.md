@@ -49,13 +49,15 @@ The File > Open Sample menu includes CREMI C (`cremi_c`) and Fluo-C2DL-Huh7 (`fl
 
 ### 1. Data
 
-Load a 3D image, or a 4D image with one channel dimension, and select its image layer.
-Label objects on one or more sections, then click Make mask to select the labelled voxels for training.
+Load a 3D image, or a 4D image with one channel axis, and select it as the Image layer.
+Label objects on one or more sections and select that layer as the Labels layer.
+Click Make mask to mark the labelled voxels for training, then select the new mask as the Mask layer.
 You can make labels with napari's drawing tools or [micro-sam](https://github.com/computational-cell-analytics/micro-sam).
 
 ### 2. 2D model
 
-Choose a task and click Train, or load a checkpoint from an earlier run.
+Choose a task and click Train. The loss plot appears below the buttons while the model trains.
+To use a checkpoint from an earlier run, clear Train from scratch and click Load model.
 
 | Task | Output |
 |------|--------|
@@ -64,17 +66,19 @@ Choose a task and click Train, or load a checkpoint from an earlier run.
 | `2d_mtlsd` | Both LSDs and affinities |
 
 The Device list offers CPU, plus CUDA and MPS when they are available.
-For CPU training without data-loader processes, set Num Workers to `0` in Advanced Config.
+For CPU training without data-loader processes, set Num Workers to `0` under Training in the 2D model's Advanced Config.
 
 ### 3. 3D model
 
-Click Download to get the pretrained 3D model for the selected 2D task.
+Click Download to get the pretrained 3D model for the selected 2D task, or click Load model to use your own checkpoint.
 The 3D model converts 2D predictions into 3D affinities.
+To train a 3D model yourself, open Train the 3D model.
 The plugin saves downloads and training checkpoints in `~/.napari_bootstrapper`.
 
 ### 4. Segmentation
 
-Choose mutex watershed or connected components, then click Start to predict and segment the volume.
+Choose mutex watershed or connected components as the Method, then click Start to predict and segment the volume.
+Advanced Config sets the affinity channels, biases and other parameters of the method.
 The widget adds the predictions and segmentation as napari layers.
 
 ## Proofreading
@@ -85,9 +89,12 @@ Open the Proofreading widget from the Plugins menu, or run:
 napari -w napari-bootstrapper Proofreading
 ```
 
-Select objects with points or label IDs, then apply an operation to one section or the full volume.
+Choose the labels layer to edit. Select objects with a points layer or with label IDs, then choose an operation and click its button.
 The widget can merge, split, delete, dilate, erode, open, close, and fill holes.
+These operations change the current section, or the full volume when Apply in 3D is checked.
 The Filter operation removes objects by size, by section count, or by how many standard deviations their size lies from the mean object size.
+Filter always changes the full volume, so Apply in 3D is disabled for it.
+A filter set to Off is skipped. Undo reverts the last operation.
 The widget uses [fastmorph](https://github.com/seung-lab/fastmorph), [fastremap](https://github.com/seung-lab/fastremap), and [cc3d](https://github.com/seung-lab/connected-components-3d).
 
 ## Tests

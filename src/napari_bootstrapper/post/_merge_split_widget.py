@@ -12,6 +12,7 @@ from qtpy.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -28,6 +29,29 @@ from skimage import draw
 from skimage.feature import peak_local_max
 from skimage.measure import regionprops
 from skimage.segmentation import watershed
+
+from .._ui import (
+    GROUP_SPACING,
+    SECTION_INSET,
+    align_label_columns,
+    apply_plugin_theme,
+    current_theme,
+    format_label_grid,
+    make_action_grid,
+    make_section,
+)
+
+APPLY_TEXTS = {
+    "Dilate": "Dilate labels",
+    "Erode": "Erode labels",
+    "Open": "Open labels",
+    "Close": "Close labels",
+    "Fill holes": "Fill holes",
+    "Merge": "Merge labels",
+    "Split": "Split labels",
+    "Delete": "Delete labels",
+    "Filter": "Filter labels",
+}
 
 
 def take(array, indices, axis=0):
@@ -548,62 +572,62 @@ class ProofreadingWidget(QMainWindow):
         self.scroll = QScrollArea()
         main_widget = QWidget()
         layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(10)
 
-        layout.addWidget(self._make_heading("Selection"))
+        target_grid = QGridLayout()
+        format_label_grid(target_grid, inset=SECTION_INSET)
+        self._target_label = QLabel("Labels layer")
+        target_grid.addWidget(self._target_label, 0, 0)
+        self.labels_selector = QComboBox()
+        self.labels_selector.setToolTip("Labels layer to operate on")
+        target_grid.addWidget(self.labels_selector, 0, 1)
+        layout.addLayout(target_grid)
 
         sel_grid = QGridLayout()
 
-        sel_grid.addWidget(QLabel("Labels layer"), 0, 0)
-        self.labels_selector = QComboBox()
-        self.labels_selector.setToolTip("Labels layer to operate on")
-        sel_grid.addWidget(self.labels_selector, 0, 1)
-
-        sel_grid.addWidget(QLabel("Selection layer"), 1, 0)
+        self._points_label = QLabel("Points layer")
+        sel_grid.addWidget(self._points_label, 0, 0)
         self.selection_selector = QComboBox()
         self.selection_selector.setToolTip(
-            "Points layer for selecting labels"
+            "Points layer whose points select labels"
         )
         self.selection_selector.addItem("(none)")
-        sel_grid.addWidget(self.selection_selector, 1, 1)
+        sel_grid.addWidget(self.selection_selector, 0, 1)
 
-        sel_grid.addWidget(QLabel("Label IDs"), 2, 0)
+        self._label_ids_label = QLabel("Label IDs")
+        sel_grid.addWidget(self._label_ids_label, 1, 0)
         self.label_ids_input = QLineEdit()
-        self.label_ids_input.setPlaceholderText(
-            "e.g. 1, 5, 12 (overrides selection)"
-        )
+        self.label_ids_input.setPlaceholderText("1, 5, 12 (overrides points)")
         self.label_ids_input.setToolTip(
-            "Comma-separated label IDs. They override the selection layer."
+            "Comma-separated label IDs. They override the points layer."
         )
-        sel_grid.addWidget(self.label_ids_input, 2, 1)
+        sel_grid.addWidget(self.label_ids_input, 1, 1)
 
-        self.apply3d_checkbox = QCheckBox("Apply in 3D")
-        self.apply3d_checkbox.setToolTip(
-            "Apply the operation to the full 3D volume "
-            "instead of the current 2D slice"
+        self.selection_box = make_section(
+            "Selection",
+            sel_grid,
+            "Choose the objects to edit with a points layer or label IDs.",
         )
-        sel_grid.addWidget(self.apply3d_checkbox, 3, 0, 1, 2)
+        layout.addWidget(self.selection_box)
 
-        layout.addLayout(sel_grid)
-
-        layout.addWidget(self._make_heading("Operation"))
-
-        op_grid = QGridLayout()
+        op_layout = QVBoxLayout()
+        op_layout.setSpacing(6)
 
         self.group_selector = QComboBox()
         self.group_selector.addItems(
             ["Morphology", "Merge / Split", "Filter"]
         )
         self.group_selector.setToolTip("Operation category")
-        op_grid.addWidget(self.group_selector, 0, 0, 1, 2)
-
-        layout.addLayout(op_grid)
+        op_layout.addWidget(self.group_selector)
 
         self.morph_container = QWidget()
         morph_layout = QVBoxLayout()
-        morph_layout.setContentsMargins(4, 2, 4, 2)
-        morph_layout.setSpacing(4)
+        morph_layout.setContentsMargins(0, 0, 0, 0)
+        morph_layout.setSpacing(6)
 
         morph_op_grid = QGridLayout()
+        morph_op_grid.setSpacing(6)
         self.morph_op_group = QButtonGroup(self)
         self.morph_radios = {}
         morph_tooltips = {
@@ -611,20 +635,29 @@ class ProofreadingWidget(QMainWindow):
             "Erode": "Erode foreground labels",
             "Open": "Morphological opening (erode then dilate)",
             "Close": "Morphological closing (dilate then erode)",
-            "Fill holes": "Fill holes in topologically closed objects (github.com/seung-lab/fastmorph)",
+            "Fill holes": "Fill holes in topologically closed objects"
+            " (github.com/seung-lab/fastmorph)",
         }
-        for i, op in enumerate(
-            ["Dilate", "Erode", "Open", "Close", "Fill holes"]
-        ):
+        morph_positions = {
+            "Dilate": (0, 0),
+            "Erode": (1, 0),
+            "Open": (0, 1),
+            "Close": (1, 1),
+            "Fill holes": (0, 2),
+        }
+        for op in ["Dilate", "Erode", "Open", "Close", "Fill holes"]:
             rb = QRadioButton(op)
             rb.setToolTip(morph_tooltips[op])
             self.morph_op_group.addButton(rb)
             self.morph_radios[op] = rb
-            morph_op_grid.addWidget(rb, 0, i)
+            morph_op_grid.addWidget(rb, *morph_positions[op])
+        for column in range(3):
+            morph_op_grid.setColumnStretch(column, 1)
         self.morph_radios["Dilate"].setChecked(True)
         morph_layout.addLayout(morph_op_grid)
 
         style_grid = QGridLayout()
+        format_label_grid(style_grid)
         self.style_group = QButtonGroup(self)
         self.style_spherical = QRadioButton("Spherical")
         self.style_stenciled = QRadioButton("Stenciled")
@@ -633,21 +666,27 @@ class ProofreadingWidget(QMainWindow):
         self.style_group.addButton(self.style_spherical)
         self.style_group.addButton(self.style_stenciled)
         self.style_spherical.setChecked(True)
-        style_grid.addWidget(QLabel("Style"), 0, 0)
+        self._style_label = QLabel("Style")
+        style_grid.addWidget(self._style_label, 0, 0)
         style_grid.addWidget(self.style_spherical, 0, 1)
-        style_grid.addWidget(self.style_stenciled, 0, 2)
+        style_grid.addWidget(self.style_stenciled, 1, 1)
 
-        self.radius_label = QLabel("Radius: 2")
+        self.radius_label = QLabel("Radius")
         self.radius_slider = QSlider(Qt.Horizontal)
         self.radius_slider.setMinimum(2)
         self.radius_slider.setMaximum(7)
         self.radius_slider.setValue(2)
         self.radius_slider.setToolTip("Radius for spherical operations")
+        self.radius_value_label = QLabel("2")
         self.radius_slider.valueChanged.connect(
-            lambda v: self.radius_label.setText(f"Radius: {v}")
+            lambda v: self.radius_value_label.setText(str(v))
         )
-        style_grid.addWidget(self.radius_label, 1, 0)
-        style_grid.addWidget(self.radius_slider, 1, 1, 1, 2)
+        radius_row = QHBoxLayout()
+        radius_row.setSpacing(6)
+        radius_row.addWidget(self.radius_slider, 1)
+        radius_row.addWidget(self.radius_value_label)
+        style_grid.addWidget(self.radius_label, 2, 0)
+        style_grid.addLayout(radius_row, 2, 1)
 
         self.style_container = QWidget()
         self.style_container.setLayout(style_grid)
@@ -655,10 +694,11 @@ class ProofreadingWidget(QMainWindow):
 
         self.fill_container = QWidget()
         fill_layout = QVBoxLayout()
-        fill_layout.setContentsMargins(4, 2, 4, 2)
-        fill_layout.setSpacing(4)
+        fill_layout.setContentsMargins(0, 0, 0, 0)
+        fill_layout.setSpacing(6)
 
         fill_ver_grid = QGridLayout()
+        format_label_grid(fill_ver_grid)
         self.fill_ver_group = QButtonGroup(self)
         self.fill_v1_radio = QRadioButton("v1")
         self.fill_v1_radio.setToolTip(
@@ -673,14 +713,20 @@ class ProofreadingWidget(QMainWindow):
         self.fill_ver_group.addButton(self.fill_v1_radio)
         self.fill_ver_group.addButton(self.fill_v2_radio)
         self.fill_v1_radio.setChecked(True)
-        fill_ver_grid.addWidget(QLabel("Version"), 0, 0)
-        fill_ver_grid.addWidget(self.fill_v1_radio, 0, 1)
-        fill_ver_grid.addWidget(self.fill_v2_radio, 0, 2)
+        self._version_label = QLabel("Version")
+        version_row = QHBoxLayout()
+        version_row.setSpacing(6)
+        version_row.addWidget(self.fill_v1_radio)
+        version_row.addWidget(self.fill_v2_radio)
+        version_row.addStretch(1)
+        fill_ver_grid.addWidget(self._version_label, 0, 0)
+        fill_ver_grid.addLayout(version_row, 0, 1)
         fill_layout.addLayout(fill_ver_grid)
 
         self.fill_v1_container = QWidget()
         v1_grid = QGridLayout()
-        v1_grid.setContentsMargins(4, 2, 4, 2)
+        v1_grid.setContentsMargins(0, 0, 0, 0)
+        v1_grid.setVerticalSpacing(6)
         self.morph_closing_cb = QCheckBox("Morphological closing")
         self.morph_closing_cb.setToolTip(
             "Dilate first, then erode at the end of hole filling"
@@ -701,12 +747,12 @@ class ProofreadingWidget(QMainWindow):
 
         self.fill_v2_container = QWidget()
         v2_grid = QGridLayout()
-        v2_grid.setContentsMargins(4, 2, 4, 2)
+        format_label_grid(v2_grid)
         self.fix_borders_v2_cb = QCheckBox("Fix borders")
         self.fix_borders_v2_cb.setToolTip(
             "Along each image edge, try filling each label as a binary image"
         )
-        v2_grid.addWidget(QLabel("Merge threshold"), 0, 0)
+        self._merge_threshold_name = QLabel("Merge threshold")
         self.merge_threshold_slider = QSlider(Qt.Horizontal)
         self.merge_threshold_slider.setMinimum(0)
         self.merge_threshold_slider.setMaximum(100)
@@ -721,9 +767,13 @@ class ProofreadingWidget(QMainWindow):
                 f"{v / 100:.2f}"
             )
         )
-        v2_grid.addWidget(self.merge_threshold_slider, 0, 1)
-        v2_grid.addWidget(self.merge_threshold_label, 0, 2)
-        v2_grid.addWidget(self.fix_borders_v2_cb, 1, 0, 1, 3)
+        threshold_row = QHBoxLayout()
+        threshold_row.setSpacing(6)
+        threshold_row.addWidget(self.merge_threshold_slider, 1)
+        threshold_row.addWidget(self.merge_threshold_label)
+        v2_grid.addWidget(self._merge_threshold_name, 0, 0)
+        v2_grid.addLayout(threshold_row, 0, 1)
+        v2_grid.addWidget(self.fix_borders_v2_cb, 1, 0, 1, 2)
         self.fill_v2_container.setLayout(v2_grid)
         fill_layout.addWidget(self.fill_v2_container)
 
@@ -731,14 +781,15 @@ class ProofreadingWidget(QMainWindow):
         morph_layout.addWidget(self.fill_container)
 
         self.morph_container.setLayout(morph_layout)
-        layout.addWidget(self.morph_container)
+        op_layout.addWidget(self.morph_container)
 
         self.edit_container = QWidget()
         edit_layout = QVBoxLayout()
-        edit_layout.setContentsMargins(4, 2, 4, 2)
-        edit_layout.setSpacing(4)
+        edit_layout.setContentsMargins(0, 0, 0, 0)
+        edit_layout.setSpacing(6)
 
         edit_op_grid = QGridLayout()
+        edit_op_grid.setSpacing(6)
         self.edit_op_group = QButtonGroup(self)
         self.edit_radios = {}
         edit_tooltips = {
@@ -755,15 +806,15 @@ class ProofreadingWidget(QMainWindow):
             self.edit_op_group.addButton(rb)
             self.edit_radios[op] = rb
             edit_op_grid.addWidget(rb, 0, i)
+            edit_op_grid.setColumnStretch(i, 1)
         self.edit_radios["Merge"].setChecked(True)
         edit_layout.addLayout(edit_op_grid)
 
         self.split_container = QWidget()
         split_grid = QGridLayout()
-        split_grid.setContentsMargins(4, 2, 4, 2)
-        split_grid.setSpacing(4)
+        format_label_grid(split_grid)
 
-        split_grid.addWidget(QLabel("Min distance"), 0, 0)
+        self._min_distance_name = QLabel("Min distance")
         self.min_distance_slider = QSlider(Qt.Horizontal)
         self.min_distance_slider.setMinimum(1)
         self.min_distance_slider.setMaximum(100)
@@ -775,21 +826,25 @@ class ProofreadingWidget(QMainWindow):
         self.min_distance_slider.valueChanged.connect(
             lambda v: self.min_distance_label.setText(str(v))
         )
-        split_grid.addWidget(self.min_distance_slider, 0, 1)
-        split_grid.addWidget(self.min_distance_label, 0, 2)
+        distance_row = QHBoxLayout()
+        distance_row.setSpacing(6)
+        distance_row.addWidget(self.min_distance_slider, 1)
+        distance_row.addWidget(self.min_distance_label)
+        split_grid.addWidget(self._min_distance_name, 0, 0)
+        split_grid.addLayout(distance_row, 0, 1)
 
         self.points_as_markers_cb = QCheckBox("Use points as markers")
         self.points_as_markers_cb.setToolTip(
             "Use placed points as watershed markers"
         )
-        split_grid.addWidget(self.points_as_markers_cb, 1, 0, 1, 3)
+        self.points_as_markers_cb.toggled.connect(self._on_points_as_markers)
+        split_grid.addWidget(self.points_as_markers_cb, 1, 0, 1, 2)
 
         self.new_label_cb = QCheckBox("Specify new label IDs")
         self.new_label_cb.setToolTip(
             "Assign specific label IDs to split fragments"
             " instead of auto-incrementing"
         )
-        split_grid.addWidget(self.new_label_cb, 2, 0, 1, 2)
 
         self.start_label_input = QLineEdit()
         self.start_label_input.setPlaceholderText("Start from...")
@@ -797,67 +852,81 @@ class ProofreadingWidget(QMainWindow):
             "Starting label ID for split fragments (e.g. 100)"
         )
         self.start_label_input.setEnabled(False)
-        split_grid.addWidget(self.start_label_input, 2, 2)
         self.new_label_cb.toggled.connect(
             self.start_label_input.setEnabled
         )
+        new_label_row = QHBoxLayout()
+        new_label_row.setSpacing(6)
+        new_label_row.addWidget(self.new_label_cb)
+        new_label_row.addWidget(self.start_label_input)
+        split_grid.addLayout(new_label_row, 2, 0, 1, 2)
 
         self.split_container.setLayout(split_grid)
         edit_layout.addWidget(self.split_container)
 
         self.edit_container.setLayout(edit_layout)
-        layout.addWidget(self.edit_container)
+        op_layout.addWidget(self.edit_container)
 
         self.filter_container = QWidget()
         filter_layout = QGridLayout()
-        filter_layout.setContentsMargins(4, 2, 4, 2)
-        filter_layout.setSpacing(4)
+        format_label_grid(filter_layout)
 
-        filter_layout.addWidget(QLabel("Min size (voxels)"), 0, 0)
+        dust_label = QLabel("Min size (voxels)")
+        filter_layout.addWidget(dust_label, 0, 0)
         self.dust_spinbox = QSpinBox()
         self.dust_spinbox.setRange(0, 1000000)
         self.dust_spinbox.setValue(0)
+        self.dust_spinbox.setSpecialValueText("Off")
         self.dust_spinbox.setToolTip(
-            "Remove labels smaller than this (0 = skip)"
+            "Remove labels smaller than this. Off skips this filter."
         )
         filter_layout.addWidget(self.dust_spinbox, 0, 1)
 
-        filter_layout.addWidget(QLabel("Max size (voxels)"), 1, 0)
+        max_size_label = QLabel("Max size (voxels)")
+        filter_layout.addWidget(max_size_label, 1, 0)
         self.max_size_spinbox = QSpinBox()
         self.max_size_spinbox.setRange(0, 10000000)
         self.max_size_spinbox.setValue(0)
+        self.max_size_spinbox.setSpecialValueText("Off")
         self.max_size_spinbox.setToolTip(
-            "Remove labels larger than this (0 = no max)"
+            "Remove labels larger than this. Off skips this filter."
         )
         filter_layout.addWidget(self.max_size_spinbox, 1, 1)
 
-        filter_layout.addWidget(QLabel("Largest K"), 2, 0)
+        largest_k_label = QLabel("Largest K")
+        filter_layout.addWidget(largest_k_label, 2, 0)
         self.largest_k_spinbox = QSpinBox()
         self.largest_k_spinbox.setRange(0, 1000000)
         self.largest_k_spinbox.setValue(0)
+        self.largest_k_spinbox.setSpecialValueText("Off")
         self.largest_k_spinbox.setToolTip(
-            "Keep the K largest labels (0 = skip)"
+            "Keep only the K largest labels. Off skips this filter."
         )
         filter_layout.addWidget(self.largest_k_spinbox, 2, 1)
 
-        filter_layout.addWidget(QLabel("Sigma"), 3, 0)
+        sigma_label = QLabel("Sigma")
+        filter_layout.addWidget(sigma_label, 3, 0)
         self.sigma_spinbox = QDoubleSpinBox()
         self.sigma_spinbox.setRange(0.0, 10.0)
         self.sigma_spinbox.setValue(0.0)
         self.sigma_spinbox.setSingleStep(0.1)
         self.sigma_spinbox.setDecimals(1)
+        self.sigma_spinbox.setSpecialValueText("Off")
         self.sigma_spinbox.setToolTip(
-            "Outlier threshold in standard deviations (0 = skip)"
+            "Remove labels whose size lies more than this many standard"
+            " deviations from the mean size. Off skips this filter."
         )
         filter_layout.addWidget(self.sigma_spinbox, 3, 1)
 
-        filter_layout.addWidget(QLabel("Min Z slices"), 4, 0)
+        min_z_label = QLabel("Min Z slices")
+        filter_layout.addWidget(min_z_label, 4, 0)
         self.min_z_spinbox = QSpinBox()
         self.min_z_spinbox.setRange(0, 1000)
         self.min_z_spinbox.setValue(0)
+        self.min_z_spinbox.setSpecialValueText("Off")
         self.min_z_spinbox.setToolTip(
-            "Minimum number of Z slices that a label must appear in"
-            " (0 = skip)"
+            "Remove labels that appear in fewer Z slices than this."
+            " Off skips this filter."
         )
         filter_layout.addWidget(self.min_z_spinbox, 4, 1)
 
@@ -869,24 +938,72 @@ class ProofreadingWidget(QMainWindow):
         filter_layout.addWidget(self.relabel_cb, 5, 0, 1, 2)
 
         self.filter_container.setLayout(filter_layout)
-        layout.addWidget(self.filter_container)
+        op_layout.addWidget(self.filter_container)
 
-        btn_grid = QGridLayout()
+        # Apply in 3D and the buttons set the scope and run the operation,
+        # so a group gap separates them from the operation's options.
+        op_layout.addSpacing(GROUP_SPACING - op_layout.spacing())
+        self.apply3d_checkbox = QCheckBox("Apply in 3D")
+        self.apply3d_checkbox.setToolTip(
+            "Apply the operation to the full 3D volume "
+            "instead of the current 2D slice"
+        )
+        op_layout.addWidget(self.apply3d_checkbox)
+
         self.apply_button = QPushButton("Apply")
+        self.apply_button.setProperty("primary", True)
         self.apply_button.setToolTip("Apply the selected operation")
         self.apply_button.clicked.connect(self._on_apply)
-        btn_grid.addWidget(self.apply_button, 0, 0)
 
         self.undo_button = QPushButton("Undo")
         self.undo_button.setToolTip("Undo the last operation")
         self.undo_button.setEnabled(False)
         self.undo_button.clicked.connect(self._on_undo)
-        btn_grid.addWidget(self.undo_button, 0, 1)
-        layout.addLayout(btn_grid)
+        op_layout.addLayout(
+            make_action_grid([[(self.apply_button, 2), (self.undo_button, 1)]])
+        )
+
+        self.operation_box = make_section(
+            "Operation",
+            op_layout,
+            "Choose an operation, set its options, then apply it.",
+        )
+        layout.addWidget(self.operation_box)
 
         layout.addStretch()
 
         main_widget.setLayout(layout)
+
+        self._common_labels = [
+            self._target_label,
+            self._points_label,
+            self._label_ids_label,
+        ]
+        self._group_labels = {
+            "Morphology": [
+                self._style_label,
+                self.radius_label,
+                self._version_label,
+                self._merge_threshold_name,
+            ],
+            "Merge / Split": [self._min_distance_name],
+            "Filter": [
+                dust_label,
+                max_size_label,
+                largest_k_label,
+                sigma_label,
+                min_z_label,
+            ],
+        }
+        self._label_grids = [
+            target_grid,
+            sel_grid,
+            style_grid,
+            fill_ver_grid,
+            v2_grid,
+            split_grid,
+            filter_layout,
+        ]
 
         self.scroll.setWidget(main_widget)
         self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -922,26 +1039,32 @@ class ProofreadingWidget(QMainWindow):
 
         self._populate_layer_selectors()
         self._update_visibility()
+        self.viewer.events.theme.connect(self._apply_theme)
+        self._apply_theme()
 
-    def _make_heading(self, text):
-        heading = QLabel(text)
-        heading.setStyleSheet(
-            """
-            QLabel {
-                color: #555;
-                font-size: 13px;
-                padding: 5px;
-                border-top: 0.5px solid #333;
-                border-bottom: 0.5px solid #333;
-                margin-top: 10px;
-                margin-bottom: 10px;
-                text-align: center;
-                background: transparent;
-            }
-        """
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._align_label_columns()
+
+    def _apply_theme(self, event=None):
+        apply_plugin_theme(
+            self, current_theme(self.viewer), self._align_label_columns
         )
-        heading.setAlignment(Qt.AlignCenter)
-        return heading
+
+    def _align_label_columns(self):
+        # The labels of the current operation group set the width, so the
+        # fields stay in place while the user picks options in that group.
+        group = self.group_selector.currentText()
+        labels = self._common_labels + self._group_labels.get(group, [])
+        align_label_columns(labels, self._label_grids)
+
+    def _on_points_as_markers(self, checked):
+        for widget in (
+            self.min_distance_slider,
+            self.min_distance_label,
+            self._min_distance_name,
+        ):
+            widget.setEnabled(not checked)
 
     def _populate_layer_selectors(self):
         self.labels_selector.clear()
@@ -992,9 +1115,12 @@ class ProofreadingWidget(QMainWindow):
         self.edit_container.setVisible(is_edit)
         self.filter_container.setVisible(is_filter)
 
+        checked = self.morph_op_group.checkedButton()
+        morph_op = checked.text() if checked else "Dilate"
+        checked = self.edit_op_group.checkedButton()
+        edit_op = checked.text() if checked else "Merge"
+
         if is_morph:
-            checked = self.morph_op_group.checkedButton()
-            morph_op = checked.text() if checked else "Dilate"
             is_fill = morph_op == "Fill holes"
             self.style_container.setVisible(not is_fill)
             self.fill_container.setVisible(is_fill)
@@ -1003,36 +1129,29 @@ class ProofreadingWidget(QMainWindow):
                 is_spherical = self.style_spherical.isChecked()
                 self.radius_slider.setVisible(is_spherical)
                 self.radius_label.setVisible(is_spherical)
+                self.radius_value_label.setVisible(is_spherical)
             else:
                 is_v1 = self.fill_v1_radio.isChecked()
                 self.fill_v1_container.setVisible(is_v1)
                 self.fill_v2_container.setVisible(not is_v1)
 
         if is_edit:
-            checked = self.edit_op_group.checkedButton()
-            edit_op = checked.text() if checked else "Merge"
             self.split_container.setVisible(edit_op == "Split")
 
         sel_relevant = not is_filter
+        self.selection_box.setEnabled(sel_relevant)
         self.selection_selector.setEnabled(sel_relevant)
         self.label_ids_input.setEnabled(sel_relevant)
         self.apply3d_checkbox.setEnabled(not is_filter)
 
-        dim_style = "" if sel_relevant else "color: #666;"
-        self.label_ids_input.setStyleSheet(
-            f"QLineEdit {{ {dim_style} }}"
-        )
-
         if is_morph:
-            checked = self.morph_op_group.checkedButton()
-            op_name = checked.text() if checked else "Apply"
-            self.apply_button.setText(f"Apply {op_name}")
+            self.apply_button.setText(APPLY_TEXTS[morph_op])
         elif is_edit:
-            checked = self.edit_op_group.checkedButton()
-            op_name = checked.text() if checked else "Apply"
-            self.apply_button.setText(op_name)
+            self.apply_button.setText(APPLY_TEXTS[edit_op])
         else:
-            self.apply_button.setText("Apply Filter")
+            self.apply_button.setText(APPLY_TEXTS["Filter"])
+
+        self._align_label_columns()
 
     def _on_undo(self):
         if self._undo_state is None:
