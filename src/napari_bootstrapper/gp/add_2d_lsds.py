@@ -1,10 +1,11 @@
 import gunpowder as gp
 import numpy as np
-from lsd_lite import get_lsds
+
+from ._lsd_lite_vendored import _get_lsds
 
 
 def compute_lsds(segmentation, sigma, voxel_size, downsample, crop):
-    descriptor = get_lsds(
+    descriptor = _get_lsds(
         _pad_high_end_to_downsample_multiple(segmentation, downsample),
         sigma,
         voxel_size,

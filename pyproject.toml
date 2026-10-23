@@ -36,7 +36,6 @@ dependencies = [
     "matplotlib",
     "napari",
     "tqdm",
-    "lsd-lite>=1.0.1",
     "requests",
     "tifffile",
     "mwatershed",
@@ -53,6 +52,7 @@ testing = [
     "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/
     "napari",
     "pyqt5",
+    "lsd-lite>=1.0.1",  # the vendored LSD test compares against it
 ]
 
 [project.entry-points."napari.manifest"]
