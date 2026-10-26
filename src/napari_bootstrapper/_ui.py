@@ -1,9 +1,12 @@
 """Layout and theme helpers shared by the Bootstrapper and Proofreading
 widgets."""
 
+from importlib.resources import files
+
 from napari.utils.theme import get_theme, template
-from qtpy.QtCore import QTimer
-from qtpy.QtGui import QColor, QPalette
+from qtpy.QtCore import QByteArray, QRectF, QSize, Qt, QTimer
+from qtpy.QtGui import QColor, QPainter, QPalette, QPixmap
+from qtpy.QtSvg import QSvgRenderer
 from qtpy.QtWidgets import (
     QGridLayout,
     QGroupBox,
@@ -22,6 +25,10 @@ SECTION_INSET = 9
 # the content under a disclosure header is indented by 12 px.
 GROUP_SPACING = 12
 GROUP_INDENT = 12
+
+# The wordmark is drawn on an 84 x 16 pixel grid. Two logical pixels per
+# grid pixel keep its edges sharp.
+LOGO_SIZE = QSize(168, 32)
 
 PLUGIN_QSS = """
 QGroupBox[section="true"] {
@@ -96,6 +103,23 @@ def current_theme(viewer):
 
 def plugin_stylesheet(theme):
     return template(PLUGIN_QSS, **theme.to_rgb_dict())
+
+
+def logo_pixmap(theme, ratio):
+    """
+    Returns the Bootstrapper wordmark at LOGO_SIZE, drawn with `ratio`
+    device pixels per logical pixel. A dark theme gets the wordmark with
+    light letters.
+    """
+    name = "logo-dark.svg" if theme.type == "dark" else "logo.svg"
+    svg = (files(__package__) / "resources" / name).read_bytes()
+    pixmap = QPixmap(LOGO_SIZE * ratio)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    QSvgRenderer(QByteArray(svg)).render(painter, QRectF(pixmap.rect()))
+    painter.end()
+    pixmap.setDevicePixelRatio(ratio)
+    return pixmap
 
 
 def apply_plugin_theme(widget, theme, align_labels):

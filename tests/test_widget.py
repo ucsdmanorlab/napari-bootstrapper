@@ -1,3 +1,4 @@
+from collections import Counter
 from copy import deepcopy
 
 import numpy as np
@@ -261,6 +262,35 @@ def test_widget_follows_the_viewer_theme(widget, theme_id):
     for plot in (widget.losses_2d_widget, widget.losses_3d_widget):
         assert plot.backgroundBrush().color().name() == background
     assert theme.text.as_hex() in widget._description_label.text()
+
+
+def test_header_logo_follows_the_viewer_theme(widget):
+    logo = widget._logo_label
+    assert logo.accessibleName() == "Bootstrapper"
+    assert logo.toolTip() == "Bootstrapper"
+    images = {}
+    for theme_id in ("light", "dark"):
+        widget.viewer.theme = theme_id
+        pixmap = logo.pixmap()
+        assert pixmap is not None
+        assert not pixmap.isNull()
+        ratio = pixmap.devicePixelRatio()
+        assert ratio == widget.devicePixelRatioF()
+        assert (pixmap.width() / ratio, pixmap.height() / ratio) == (168, 32)
+        image = pixmap.toImage()
+        images[theme_id] = image
+        colors = [
+            image.pixelColor(x, y)
+            for x in range(image.width())
+            for y in range(image.height())
+        ]
+        ink = Counter(color.name() for color in colors if color.alpha() == 255)
+        # Most of the ink is the letters, which must stand out from the
+        # panel in both themes.
+        letters = QColor(ink.most_common(1)[0][0])
+        background = QColor(get_theme(theme_id).background.as_hex())
+        assert abs(letters.lightnessF() - background.lightnessF()) > 0.5
+    assert images["light"] != images["dark"]
 
 
 def test_3d_training_controls_start_hidden(widget):

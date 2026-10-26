@@ -41,6 +41,7 @@ from ._ui import (
     apply_plugin_theme,
     current_theme,
     format_label_grid,
+    logo_pixmap,
     make_action_grid,
     make_collapsible,
     make_section,
@@ -180,6 +181,8 @@ class Widget(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         self._align_label_columns()
+        # Redraws the wordmark at the device pixel ratio of the dock's screen.
+        self._set_logo()
 
     def _apply_theme(self, event=None):
         self._theme = current_theme(self.viewer)
@@ -188,6 +191,12 @@ class Widget(QMainWindow):
         style_loss_plot(self.losses_2d_widget, self._theme, self._loss_pen)
         style_loss_plot(self.losses_3d_widget, self._theme, self._loss_pen)
         self._set_link_labels(self._theme)
+        self._set_logo()
+
+    def _set_logo(self):
+        self._logo_label.setPixmap(
+            logo_pixmap(self._theme, self.devicePixelRatioF())
+        )
 
     def _align_label_columns(self):
         align_label_columns(self._row_labels, self._label_grids)
@@ -286,13 +295,22 @@ class Widget(QMainWindow):
 
     def set_grid_0(self):
         """
-        Adds the plugin description. `_set_link_labels` sets its text.
+        Adds the Bootstrapper wordmark above the plugin description.
+        `_set_logo` draws the wordmark and `_set_link_labels` sets the
+        description text.
         """
+        self._logo_label = QLabel(self)
+        self._logo_label.setAccessibleName("Bootstrapper")
+        self._logo_label.setToolTip("Bootstrapper")
         self._description_label = QLabel(self)
         self._description_label.setWordWrap(True)
         self._description_label.setOpenExternalLinks(True)
         self.grid_0.setContentsMargins(SECTION_INSET, 0, SECTION_INSET, 0)
-        self.grid_0.addWidget(self._description_label, 0, 0, 1, 1)
+        # The wordmark ends with an empty row of pixels below its descenders,
+        # so it needs no extra space above the description.
+        self.grid_0.setVerticalSpacing(0)
+        self.grid_0.addWidget(self._logo_label, 0, 0, Qt.AlignLeft)
+        self.grid_0.addWidget(self._description_label, 1, 0, 1, 1)
 
     def set_grid_1(self):
         """

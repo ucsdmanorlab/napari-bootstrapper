@@ -2,6 +2,7 @@ name: napari-bootstrapper
 display_name: Bootstrapper
 # Set visibility to 'hidden' to remove the plugin from napari hub search results.
 visibility: public
+icon: napari_bootstrapper.resources:icon.svg
 # For the valid categories, see https://napari.org/stable/plugins/technical_references/manifest.html#fields
 categories: ["Annotation", "Segmentation", "Dataset"]
 contributions:

@@ -70,7 +70,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
-"napari_bootstrapper" = ["sample_data/*.tif"]
+"napari_bootstrapper" = ["sample_data/*.tif", "resources/*.svg"]
 
 
 [tool.setuptools.dynamic]
