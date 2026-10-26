@@ -15,7 +15,9 @@ Dense 3D segmentation from sparse 2D labels, in napari.
 You label a few objects on a few sections and train a 2D model on them, and a pretrained 3D model turns its predictions into a 3D segmentation.
 The method is from [_Sparse Annotation is Sufficient for Bootstrapping Dense Segmentation_](https://www.biorxiv.org/content/10.1101/2024.06.14.599135v2).
 
-![cremi30](https://github.com/user-attachments/assets/db0e9ef7-0826-4184-9f00-8203e7bf48ec)
+<img alt="Labels on one section of CREMI C, a 2D model training, and the 3D segmentation that results" src="https://raw.githubusercontent.com/ucsdmanorlab/napari-bootstrapper/main/docs/hero.webp" width="100%">
+
+The full video is on the [project page](https://ucsdmanorlab.github.io/sparsity/#code).
 
 ## Install
 
