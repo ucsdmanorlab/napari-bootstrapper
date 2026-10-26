@@ -29,6 +29,7 @@ DEFAULT_2D_MODEL_CONFIG = {
     "learning_rate": 1e-4,
     "max_iterations": 5000,
     "num_workers": 8,
+    "mixed_precision": True,
     "save_snapshots_every": 1000,
     "net": {
         "adj_slices": 3,
@@ -71,6 +72,7 @@ DEFAULT_3D_MODEL_CONFIG = {
     "learning_rate": 0.5e-4,
     "max_iterations": 10000,
     "num_workers": 8,
+    "mixed_precision": True,
     "save_snapshots_every": 1000,
     "net": {
         "num_fmaps": 9,

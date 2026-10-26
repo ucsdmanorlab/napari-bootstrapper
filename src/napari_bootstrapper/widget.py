@@ -2,6 +2,7 @@ import os
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
+import contextlib
 import hashlib
 import sys
 import zipfile
@@ -65,14 +66,50 @@ from .models import (
 from .post import DEFAULT_SEG_PARAMS, segment_affs
 
 
-def train_iteration(batch, model, criterion, optimizer, device, dimension):
+def autocast(device, enabled):
+    """
+    Returns a bfloat16 autocast context on MPS and on CUDA GPUs with native
+    bfloat16 (compute capability 8.0 or newer), and a context that does
+    nothing otherwise.
+    """
+    if enabled and (
+        device.type == "mps"
+        or (
+            device.type == "cuda"
+            and torch.cuda.is_bf16_supported()
+            # is_bf16_supported() also accepts older GPUs that emulate
+            # bfloat16 without bfloat16 hardware.
+            and torch.cuda.get_device_capability(device)[0] >= 8
+        )
+    ):
+        try:
+            return torch.autocast(device.type, dtype=torch.bfloat16)
+        except RuntimeError:
+            pass
+    return contextlib.nullcontext()
+
+
+def train_iteration(
+    batch,
+    model,
+    criterion,
+    optimizer,
+    device,
+    dimension,
+    mixed_precision=False,
+):
     batch = [item.to(device) for item in batch]
 
     model.train()
-    if dimension == "3d" and len(batch) > 3:
-        outputs = model(batch[0], batch[1])
+    with autocast(device, mixed_precision):
+        if dimension == "3d" and len(batch) > 3:
+            outputs = model(batch[0], batch[1])
+        else:
+            outputs = model(batch[0])
+    if isinstance(outputs, torch.Tensor):
+        outputs = outputs.float()
     else:
-        outputs = model(batch[0])
+        outputs = tuple(output.float() for output in outputs)
 
     if dimension == "2d":
         if len(outputs) == 1:
@@ -950,6 +987,7 @@ class Widget(QMainWindow):
                 optimizer=getattr(self, f"optimizer_{dimension}"),
                 device=self.device,
                 dimension=dimension,
+                mixed_precision=model_config.get("mixed_precision", True),
             )
             if (
                 model_config["save_snapshots_every"] > 0
@@ -1704,6 +1742,14 @@ class Widget(QMainWindow):
             ),
         }
 
+        param_tooltips = {
+            "mixed_precision": (
+                "Runs the forward pass in bfloat16 on MPS and on CUDA GPUs"
+                " with native bfloat16 support to speed up training. Weights"
+                " stay in float32, and the CPU always uses float32."
+            ),
+        }
+
         def create_widget(param_name, param_value):
             is_readonly = (
                 readonly_params and param_name in readonly_params
@@ -1713,6 +1759,8 @@ class Widget(QMainWindow):
                 widget.setChecked(param_value)
                 if is_readonly:
                     widget.setEnabled(False)
+                if param_name in param_tooltips:
+                    widget.setToolTip(param_tooltips[param_name])
             else:
                 widget = QLineEdit()
                 widget.setMinimumWidth(240)
@@ -1745,6 +1793,8 @@ class Widget(QMainWindow):
             for row, (param_name, param_value) in enumerate(items):
                 short_name = param_name.split(".", 1)[-1]
                 label = QLabel(short_name.replace("_", " ").title())
+                if param_name in param_tooltips:
+                    label.setToolTip(param_tooltips[param_name])
                 group_grid.addWidget(label, row, 0)
                 field_labels.append(label)
                 widget = create_widget(param_name, param_value)
@@ -1883,6 +1933,7 @@ class Widget(QMainWindow):
             self, f"model_{dimension}_type_selector"
         ).currentText()
         config = getattr(self, f"model_{dimension}_config")
+        config.setdefault("mixed_precision", True)
 
         def param_filter(param_name):
             if "." not in param_name:
