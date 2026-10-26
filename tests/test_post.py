@@ -99,6 +99,35 @@ def test_fill_holes_around_an_enclosed_label_leaves_labels_unchanged(
     np.testing.assert_array_equal(layer.data, before)
 
 
+def section_fill_holes(widget, layer, version, fix_borders):
+    layer.data[:, 4, 4] = 0
+    before = layer.data.copy()
+    widget.group_selector.setCurrentText("Morphology")
+    widget.morph_radios["Fill holes"].click()
+    getattr(widget, f"fill_{version}_radio").click()
+    getattr(widget, f"fix_borders_{version}_cb").setChecked(fix_borders)
+    widget.apply3d_checkbox.setChecked(False)
+    widget.apply_button.click()
+    return before
+
+
+@pytest.mark.parametrize("fix_borders", [False, True])
+def test_section_fill_holes_v1_fills_a_hole_in_the_shown_section(
+    proofreading, fix_borders
+):
+    widget, layer = proofreading
+    before = section_fill_holes(widget, layer, "v1", fix_borders)
+    assert np.argwhere(layer.data != before).tolist() == [[4, 4, 4]]
+    assert layer.data[4, 4, 4] == 1
+
+
+@pytest.mark.parametrize("fix_borders", [False, True])
+def test_section_fill_holes_v2_keeps_the_labels(proofreading, fix_borders):
+    widget, layer = proofreading
+    before = section_fill_holes(widget, layer, "v2", fix_borders)
+    np.testing.assert_array_equal(layer.data, before)
+
+
 def test_filter_turns_off_the_selection(proofreading):
     widget, _ = proofreading
     selection = (

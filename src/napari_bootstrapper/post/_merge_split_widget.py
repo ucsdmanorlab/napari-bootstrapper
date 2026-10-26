@@ -253,6 +253,18 @@ def _apply_fill_holes(data, version, label_ids, **kwargs):
         if arr.ndim == 2:
             arr = arr[np.newaxis, ...]
             squeezed = True
+            # Every hole in a one-slice volume touches its top and bottom
+            # faces, so only the 2D fill along the faces can fill it. In
+            # fastmorph 1.10, fill_holes_v2 with fix_borders erases a
+            # one-slice volume, so v2 runs without it and fills nothing.
+            if ver == "v1":
+                kw = {**kw, "fix_borders": True}
+            else:
+                kw = {**kw, "fix_borders": False}
+                print(
+                    "Fill holes v2 fills only 3D holes. Use v1 to fill holes"
+                    " in one section."
+                )
 
         if ver == "v1":
             # fill_holes_v1 returns array, or tuple if return_fill_count
