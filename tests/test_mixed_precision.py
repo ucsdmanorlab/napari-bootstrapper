@@ -14,6 +14,24 @@ mps = pytest.mark.skipif(
 )
 
 
+def mps_runs_conv3d():
+    if not torch.backends.mps.is_available():
+        return False
+    try:
+        x = torch.zeros((1, 2, 4, 12, 12), device="mps", requires_grad=True)
+        torch.nn.Conv3d(2, 3, 3, padding=1).to("mps")(x).sum().backward()
+    except RuntimeError:
+        return False
+    return True
+
+
+# The virtual GPU on GitHub's macOS runners cannot compile the Metal Conv3d
+# kernel, so the 3D case runs only where MPS can run a Conv3d.
+mps_conv3d = pytest.mark.skipif(
+    not mps_runs_conv3d(), reason="MPS cannot run a Conv3d here"
+)
+
+
 @pytest.mark.parametrize(
     "device,enabled,bf16_supported,capability,expected",
     [
@@ -144,7 +162,10 @@ def test_mixed_precision_leaves_cpu_training_unchanged(
 )
 @pytest.mark.parametrize(
     "model_class,criterion,batch,dimension",
-    [(TwoHeads, mse_2d, batch_2d, "2d"), (TwoInputs, mse_3d, batch_3d, "3d")],
+    [
+        (TwoHeads, mse_2d, batch_2d, "2d"),
+        pytest.param(TwoInputs, mse_3d, batch_3d, "3d", marks=mps_conv3d),
+    ],
 )
 def test_mixed_precision_flag_sets_the_mps_forward_dtype(
     model_class, criterion, batch, dimension, mixed_precision, forward_dtype
