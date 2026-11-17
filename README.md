@@ -13,7 +13,7 @@
 
 Dense 3D segmentation from sparse 2D labels, in napari.
 You label a few objects on a few sections and train a 2D model on them, and a pretrained 3D model turns its predictions into a 3D segmentation.
-The method is from [_Sparse Annotation is Sufficient for Bootstrapping Dense Segmentation_](https://www.biorxiv.org/content/10.1101/2024.06.14.599135v2).
+The method is from [_A general method for bootstrapping dense 3D segmentations from sparse 2D annotations_](https://www.biorxiv.org/content/10.1101/2024.06.14.599135v4).
 
 <img alt="napari-bootstrapper on CREMI C: labels on one section, a 2D model, the pretrained 3D model, proofreading, and the 3D segmentation" src="https://raw.githubusercontent.com/ucsdmanorlab/napari-bootstrapper/main/docs/napari-bootstrapper.webp" width="100%">
 
@@ -65,10 +65,10 @@ Report bugs on the [issue tracker](https://github.com/ucsdmanorlab/napari-bootst
 ```bibtex
 @article {Thiyagarajan2024.06.14.599135,
 	author = {Thiyagarajan, Vijay Venu and Sheridan, Arlo and Harris, Kristen M. and Manor, Uri},
-	title = {Sparse Annotation is Sufficient for Bootstrapping Dense Segmentation},
-	year = {2024},
+	title = {A general method for bootstrapping dense 3D segmentations from sparse 2D annotations},
+	year = {2026},
 	doi = {10.1101/2024.06.14.599135},
-	URL = {https://www.biorxiv.org/content/10.1101/2024.06.14.599135v2},
+	URL = {https://www.biorxiv.org/content/10.1101/2024.06.14.599135v4},
 }
 ```
 
