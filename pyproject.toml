@@ -51,7 +51,7 @@ testing = [
     "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
     "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/
     "napari",
-    "pyqt5",
+    "pyqt6",
     "lsd-lite>=1.0.1",  # the vendored LSD test compares against it
 ]
 

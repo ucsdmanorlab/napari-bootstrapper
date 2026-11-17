@@ -22,7 +22,7 @@ The method is from [_A general method for bootstrapping dense 3D segmentations f
 ```bash
 conda create -n bootstrapper python=3.12 -y
 conda activate bootstrapper
-pip install napari-bootstrapper pyqt5
+pip install napari-bootstrapper pyqt6
 ```
 
 ## Run
