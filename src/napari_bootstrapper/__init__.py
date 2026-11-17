@@ -1,4 +1,4 @@
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 from .sample_data import (
     make_cremi_sample_data,
